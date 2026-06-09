@@ -1,0 +1,14 @@
+{
+  "name": "pixel-agents",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "volta": {
+    "node": "22.22.2"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.1"
+  }
+}
