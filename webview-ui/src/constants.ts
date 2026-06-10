@@ -188,29 +188,46 @@ const _svgCursor = (svg: string, hx: number, hy: number) =>
 // Pencil — hotspot at tip (0,15)
 export const CURSOR_PENCIL = _svgCursor(
   `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect x="10" y="1" width="3" height="2" fill="#fff"/><rect x="9" y="3" width="3" height="2" fill="#ccc"/><rect x="7" y="5" width="3" height="2" fill="#fff"/><rect x="5" y="7" width="3" height="2" fill="#ccc"/><rect x="3" y="9" width="3" height="2" fill="#fff"/><rect x="1" y="11" width="3" height="2" fill="#ccc"/><rect x="0" y="13" width="2" height="2" fill="#ff0"/><rect x="1" y="14" width="1" height="2" fill="#888"/></svg>`,
-  0, 15,
+  0,
+  15,
 );
 
 // Eraser — hotspot center (4,4)
 export const CURSOR_ERASER = _svgCursor(
   `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect x="2" y="2" width="10" height="8" fill="#fff" stroke="#999" stroke-width="1"/><rect x="2" y="10" width="10" height="2" fill="#f88"/><rect x="0" y="14" width="16" height="1" fill="#999"/></svg>`,
-  4, 4,
+  4,
+  4,
 );
 
 // Eyedropper — hotspot at tip (1,14)
 export const CURSOR_EYEDROPPER = _svgCursor(
   `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect x="8" y="1" width="4" height="2" fill="#ccc"/><rect x="6" y="3" width="6" height="2" fill="#fff"/><rect x="5" y="5" width="5" height="2" fill="#ccc"/><rect x="4" y="7" width="3" height="2" fill="#fff"/><rect x="3" y="9" width="3" height="2" fill="#ccc"/><rect x="2" y="11" width="2" height="2" fill="#fff"/><rect x="1" y="13" width="2" height="2" fill="#ff0"/><rect x="0" y="14" width="2" height="2" fill="#888"/></svg>`,
-  1, 14,
+  1,
+  14,
 );
 
 // Paint bucket — hotspot at pour tip (1,14)
 export const CURSOR_BUCKET = _svgCursor(
   `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect x="4" y="1" width="7" height="2" fill="#ccc"/><rect x="3" y="3" width="9" height="6" fill="#fff" stroke="#999" stroke-width="1"/><rect x="4" y="9" width="7" height="2" fill="#aaa"/><rect x="5" y="11" width="5" height="1" fill="#888"/><rect x="0" y="12" width="3" height="3" fill="#4af"/><rect x="1" y="14" width="2" height="2" fill="#4af"/></svg>`,
-  1, 14,
+  1,
+  14,
 );
 
 // Move (4-arrow) — hotspot center (8,8)
 export const CURSOR_MOVE = _svgCursor(
   `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect x="7" y="0" width="2" height="4" fill="#fff"/><rect x="6" y="1" width="4" height="2" fill="#fff"/><rect x="7" y="12" width="2" height="4" fill="#fff"/><rect x="6" y="13" width="4" height="2" fill="#fff"/><rect x="0" y="7" width="4" height="2" fill="#fff"/><rect x="1" y="6" width="2" height="4" fill="#fff"/><rect x="12" y="7" width="4" height="2" fill="#fff"/><rect x="13" y="6" width="2" height="4" fill="#fff"/><rect x="6" y="6" width="4" height="4" fill="#fff"/></svg>`,
-  8, 8,
+  8,
+  8,
 );
+
+// ── Editor Overlay Colors (renderer.ts) ─────────────────────
+export const EDITOR_HANDLE_FILL = '#ffffff';
+export const RECT_SELECT_STROKE = 'rgba(255,255,255,0.7)';
+export const RECT_SELECT_FILL = 'rgba(255,255,255,0.05)';
+export const ERASER_GHOST_FILL = 'rgba(220,50,50,0.25)';
+export const ERASER_GHOST_STROKE = 'rgba(220,50,50,0.8)';
+
+// ── Fleet Handoff Edges (office/engine/handoffEdges.ts) ─────
+export const HANDOFF_EDGE_COLOR = '#7ee0d2';
+export const HANDOFF_LABEL_COLOR = 'rgba(126,224,210,0.95)';
+export const HANDOFF_FAINT_ALPHA = 0.28;

@@ -12,6 +12,9 @@ import {
   CHARACTER_SITTING_OFFSET_PX,
   CHARACTER_Z_SORT_OFFSET,
   DELETE_BUTTON_BG,
+  EDITOR_HANDLE_FILL,
+  ERASER_GHOST_FILL,
+  ERASER_GHOST_STROKE,
   FALLBACK_FLOOR_COLOR,
   GHOST_BORDER_HOVER_FILL,
   GHOST_BORDER_HOVER_STROKE,
@@ -23,6 +26,8 @@ import {
   GRID_LINE_COLOR,
   HOVERED_OUTLINE_ALPHA,
   OUTLINE_Z_SORT_OFFSET,
+  RECT_SELECT_FILL,
+  RECT_SELECT_STROKE,
   ROOM_STAMP_GHOST_INVALID_FILL,
   ROOM_STAMP_GHOST_INVALID_STROKE,
   ROOM_STAMP_GHOST_VALID_FILL,
@@ -652,7 +657,13 @@ export interface EditorRenderState {
   /** Eraser ghost (highlights the NxN area to be erased) */
   eraserGhost?: { col: number; row: number; size: number } | null;
   /** Additional ghost sprites for multi-select drag (all selected items except primary) */
-  multiDragGhosts?: Array<{ sprite: SpriteData; col: number; row: number; valid: boolean; mirrored: boolean }>;
+  multiDragGhosts?: Array<{
+    sprite: SpriteData;
+    col: number;
+    row: number;
+    valid: boolean;
+    mirrored: boolean;
+  }>;
   /** Zone drag preview: override col/row for the dragged zone */
   zoneDragPreview?: { id: string; col: number; row: number } | null;
   /** Zone resize preview: override col/row/cols/rows for the resized zone */
@@ -727,12 +738,17 @@ function renderZoneOverlays(
     // Draw resize handles for selected zone
     if (isSelected && pw > 0 && ph > 0) {
       const handles = [
-        [px, py], [px + pw / 2, py], [px + pw, py],
-        [px, py + ph / 2],            [px + pw, py + ph / 2],
-        [px, py + ph], [px + pw / 2, py + ph], [px + pw, py + ph],
+        [px, py],
+        [px + pw / 2, py],
+        [px + pw, py],
+        [px, py + ph / 2],
+        [px + pw, py + ph / 2],
+        [px, py + ph],
+        [px + pw / 2, py + ph],
+        [px + pw, py + ph],
       ];
       ctx.globalAlpha = 1;
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = EDITOR_HANDLE_FILL;
       ctx.strokeStyle = zone.color;
       ctx.lineWidth = 1;
       for (const [hx, hy] of handles) {
@@ -796,9 +812,29 @@ export function renderFrame(
 
   // Draw zone overlays (always visible, above floor tiles, below furniture/characters)
   if (zones && zones.length > 0) {
-    renderZoneOverlays(ctx, zones, offsetX, offsetY, zoom, editor?.zoneDrawGhost, editor?.selectedZoneId, editor?.zoneDragPreview, editor?.zoneResizePreview);
+    renderZoneOverlays(
+      ctx,
+      zones,
+      offsetX,
+      offsetY,
+      zoom,
+      editor?.zoneDrawGhost,
+      editor?.selectedZoneId,
+      editor?.zoneDragPreview,
+      editor?.zoneResizePreview,
+    );
   } else if (editor?.zoneDrawGhost) {
-    renderZoneOverlays(ctx, [], offsetX, offsetY, zoom, editor.zoneDrawGhost, editor?.selectedZoneId, editor?.zoneDragPreview, editor?.zoneResizePreview);
+    renderZoneOverlays(
+      ctx,
+      [],
+      offsetX,
+      offsetY,
+      zoom,
+      editor.zoneDrawGhost,
+      editor?.selectedZoneId,
+      editor?.zoneDragPreview,
+      editor?.zoneResizePreview,
+    );
   }
 
   // Seat indicators (below furniture/characters, on top of floor)
@@ -859,7 +895,17 @@ export function renderFrame(
     }
     if (editor.multiDragGhosts) {
       for (const g of editor.multiDragGhosts) {
-        renderGhostPreview(ctx, g.sprite, g.col, g.row, g.valid, offsetX, offsetY, zoom, g.mirrored);
+        renderGhostPreview(
+          ctx,
+          g.sprite,
+          g.col,
+          g.row,
+          g.valid,
+          offsetX,
+          offsetY,
+          zoom,
+          g.mirrored,
+        );
       }
     }
     if (editor.roomStampGhost && editor.roomStampGhost.centerCol >= 0) {
@@ -923,12 +969,16 @@ export function renderFrame(
     }
 
     // Rect-select drag ghost (white dashed rectangle while dragging)
-    if (editor.rectSelectGhost && editor.rectSelectGhost.cols > 0 && editor.rectSelectGhost.rows > 0) {
+    if (
+      editor.rectSelectGhost &&
+      editor.rectSelectGhost.cols > 0 &&
+      editor.rectSelectGhost.rows > 0
+    ) {
       const { col, row, cols, rows } = editor.rectSelectGhost;
       const s = TILE_SIZE * zoom;
       ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.strokeStyle = RECT_SELECT_STROKE;
+      ctx.fillStyle = RECT_SELECT_FILL;
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.fillRect(offsetX + col * s, offsetY + row * s, cols * s, rows * s);
@@ -947,8 +997,8 @@ export function renderFrame(
       const ew = size * s;
       const eh = size * s;
       ctx.save();
-      ctx.fillStyle = 'rgba(220,50,50,0.25)';
-      ctx.strokeStyle = 'rgba(220,50,50,0.8)';
+      ctx.fillStyle = ERASER_GHOST_FILL;
+      ctx.strokeStyle = ERASER_GHOST_STROKE;
       ctx.lineWidth = 1;
       ctx.fillRect(ex, ey, ew, eh);
       ctx.strokeRect(ex + 0.5, ey + 0.5, ew - 1, eh - 1);
