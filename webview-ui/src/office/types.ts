@@ -215,3 +215,14 @@ export interface Character {
   /** ID of the RoomZone this agent is assigned to */
   homeZoneId?: string;
 }
+
+/** A fleet handoff file (projects/<slug>/handoffs/<from>--<to>--<topic>.md) —
+ *  peer-to-peer communication in the vault, rendered as canvas edges. */
+export interface FleetHandoff {
+  project: string;
+  from: string;
+  to: string;
+  topic: string;
+  file: string;
+  mtime: number;
+}

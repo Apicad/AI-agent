@@ -47,6 +47,17 @@ export interface FleetProject {
   plans: FleetPhasePlan[];
 }
 
+export interface FleetHandoff {
+  project: string;
+  from: string;
+  to: string;
+  topic: string;
+  /** Filename, for tooltips/debugging. */
+  file: string;
+  /** mtime, epoch ms — drives recency pulse/fade in the UI. */
+  mtime: number;
+}
+
 export interface FleetState {
   vaultRoot: string;
   boardUpdated: string | null;
@@ -55,6 +66,8 @@ export interface FleetState {
   projects: FleetProject[];
   /** agent name → pending brief filenames in fleet/<agent>/inbox/ */
   inboxes: Record<string, string[]>;
+  /** Peer communication: projects/<slug>/handoffs/<from>--<to>--<topic>.md, newest first. */
+  handoffs: FleetHandoff[];
   /** Detected inconsistencies, e.g. board phase ≠ PHASE.md phase. */
   drift: string[];
   generatedAt: number;
@@ -263,6 +276,33 @@ export function buildFleetState(vaultRoot: string): FleetState {
     });
   }
 
+  // Handoffs: the fleet's peer-to-peer communication, visualized as canvas edges.
+  // Scanned across all projects/ dirs (not just ones with a PHASE.md).
+  const handoffs: FleetHandoff[] = [];
+  for (const slug of listDirSafe(path.join(vaultRoot, 'projects'))) {
+    const dir = path.join(vaultRoot, 'projects', slug, 'handoffs');
+    for (const f of listDirSafe(dir)) {
+      if (!f.endsWith('.md')) continue;
+      const parts = f.slice(0, -3).split('--');
+      if (parts.length < 3) continue;
+      let mtime: number;
+      try {
+        mtime = fs.statSync(path.join(dir, f)).mtimeMs;
+      } catch {
+        continue;
+      }
+      handoffs.push({
+        project: slug,
+        from: parts[0],
+        to: parts[1],
+        topic: parts.slice(2).join('--'),
+        file: f,
+        mtime: Math.round(mtime),
+      });
+    }
+  }
+  handoffs.sort((a, b) => b.mtime - a.mtime);
+
   return {
     vaultRoot,
     boardUpdated: board.updated,
@@ -270,6 +310,7 @@ export function buildFleetState(vaultRoot: string): FleetState {
     idleRoster: board.idleRoster,
     projects,
     inboxes,
+    handoffs: handoffs.slice(0, 50),
     drift,
     generatedAt: Date.now(),
   };

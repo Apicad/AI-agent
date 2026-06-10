@@ -242,6 +242,27 @@ export function FleetPanel({ state, lastError }: FleetPanelProps) {
             </div>
           )}
 
+          {state.handoffs.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <strong>Recent handoffs</strong>
+              {state.handoffs.slice(0, 8).map((h) => (
+                <div
+                  key={`${h.project}/${h.file}`}
+                  title={`${h.project}/handoffs/${h.file}`}
+                  style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    opacity: 0.85,
+                  }}
+                >
+                  {h.from} → {h.to} · {h.topic} ·{' '}
+                  {Math.max(0, Math.round((state.generatedAt - h.mtime) / 60000))}m ago
+                </div>
+              ))}
+            </div>
+          )}
+
           {state.idleRoster.length > 0 && (
             <div style={{ opacity: 0.6 }}>Idle: {state.idleRoster.join(' · ')}</div>
           )}

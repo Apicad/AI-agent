@@ -65,6 +65,7 @@ import type {
 import { CharacterState, TILE_SIZE, TileType } from '../types.js';
 import { getWallInstances, hasWallSprites, wallColorToHex } from '../wallTiles.js';
 import { getCharacterSprite } from './characters.js';
+import { renderHandoffEdges } from './handoffEdges.js';
 import { renderMatrixEffect } from './matrixEffect.js';
 
 // ── Render functions ────────────────────────────────────────────
@@ -862,6 +863,7 @@ export function renderFrame(
 
   // Speech bubbles (always on top of characters)
   renderBubbles(ctx, characters, offsetX, offsetY, zoom);
+  renderHandoffEdges(ctx, characters, offsetX, offsetY, zoom);
 
   // Editor overlays
   if (editor) {

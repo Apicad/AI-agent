@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
+import { setFleetHandoffs } from '../office/engine/handoffStore.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { setFloorSprites } from '../office/floorTiles.js';
 import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js';
 import { setCharacterTemplates } from '../office/sprites/spriteData.js';
 import { extractToolName } from '../office/toolUtils.js';
-import type { OfficeLayout, ToolActivity } from '../office/types.js';
+import type { FleetHandoff, OfficeLayout, ToolActivity } from '../office/types.js';
 import { setWallSprites } from '../office/wallTiles.js';
 import { vscode } from '../vscodeApi.js';
 
@@ -108,6 +109,7 @@ export interface FleetState {
   idleRoster: string[];
   projects: FleetProject[];
   inboxes: Record<string, string[]>;
+  handoffs: FleetHandoff[];
   drift: string[];
   generatedAt: number;
 }
@@ -940,7 +942,9 @@ export function useExtensionMessages(
           localStorage.removeItem('pixel-agents-phase-gate');
         }
       } else if (msg.type === 'fleetState') {
-        setFleetState((msg.state as FleetState) ?? null);
+        const fleet = (msg.state as FleetState) ?? null;
+        setFleetState(fleet);
+        setFleetHandoffs(fleet?.handoffs ?? []);
         setLastError(null);
       } else if (msg.type === 'error') {
         console.error('[Pixel Agents]', msg.message);
