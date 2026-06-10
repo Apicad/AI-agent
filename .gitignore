@@ -38,3 +38,5 @@ playwright-report/
 
 # Personal workspace files
 *.code-workspace
+node_modules.nosync
+.git.nosync/
