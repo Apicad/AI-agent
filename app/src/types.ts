@@ -50,6 +50,10 @@ export interface StandaloneAgent {
   stdinWritable?: import('stream').Writable;
   pendingClear?: boolean;
   currentHookToolId?: string;
+  /** External session adopted via hook events (e.g. a vault CEO session):
+   *  purely observational — no terminal, no subprocess, never persisted. */
+  observed?: boolean;
+  lastHookAt?: number;
   pollTimer?: ReturnType<typeof setInterval>;
   permissionTimer?: ReturnType<typeof setTimeout>;
   waitingTimer?: ReturnType<typeof setTimeout>;
@@ -87,4 +91,6 @@ export interface PersistedAppAgent {
   systemPrompt?: string;
   promptVersion?: number;
   lastTrained?: string;
+  canSpawn?: boolean;
+  maxSpawn?: number;
 }

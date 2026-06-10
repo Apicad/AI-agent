@@ -71,8 +71,16 @@ function appleScriptStr(s: string): string {
  * printf/echo > ttyPath only affects display — Claude never sees it.
  * AppleScript keystroke goes through Terminal's PTY master = real keyboard input.
  */
-export function appleScriptTypeInTerminal(ttyPath: string, message: string, pressReturn = true, preDelay = 0.3): void {
-  const scptFile = path.join(os.tmpdir(), `pixel-type-${Date.now()}-${Math.random().toString(36).slice(2)}.scpt`);
+export function appleScriptTypeInTerminal(
+  ttyPath: string,
+  message: string,
+  pressReturn = true,
+  preDelay = 0.3,
+): void {
+  const scptFile = path.join(
+    os.tmpdir(),
+    `pixel-type-${Date.now()}-${Math.random().toString(36).slice(2)}.scpt`,
+  );
   const lines: string[] = [];
   if (message) lines.push(`    keystroke ${JSON.stringify(message)}`, '    delay 0.1');
   if (pressReturn) lines.push('    keystroke return');
@@ -110,15 +118,18 @@ export function appleScriptTypeInTerminal(ttyPath: string, message: string, pres
 }
 
 const EFFORT_INSTRUCTIONS: Record<string, string> = {
-  low:    'Keep responses concise and minimal.',
+  low: 'Keep responses concise and minimal.',
   medium: 'Use balanced thoroughness — not too brief, not exhaustive.',
-  high:   'Be thorough and detailed in your reasoning.',
-  max:    'Use MAXIMUM effort — apply your deepest reasoning and most thorough analysis. Leave nothing unexplored.',
+  high: 'Be thorough and detailed in your reasoning.',
+  max: 'Use MAXIMUM effort — apply your deepest reasoning and most thorough analysis. Leave nothing unexplored.',
 };
 
 export function buildInstruction(mode?: string, effort?: string): string {
   const parts: string[] = [];
-  if (mode === 'planner') parts.push('Before executing any changes, thoroughly analyze the request and present a detailed plan for user approval first.');
+  if (mode === 'planner')
+    parts.push(
+      'Before executing any changes, thoroughly analyze the request and present a detailed plan for user approval first.',
+    );
   if (effort && EFFORT_INSTRUCTIONS[effort]) parts.push(EFFORT_INSTRUCTIONS[effort]);
   return parts.join(' ');
 }
@@ -175,14 +186,19 @@ export class AgentManager {
         try {
           const e = JSON.parse(line);
           if (e.type === 'assistant' && e.message?.content) {
-            for (const b of (e.message.content as { type: string; text?: string }[])) {
+            for (const b of e.message.content as { type: string; text?: string }[]) {
               if (b.type === 'text' && b.text?.trim()) blocks.push(b.text.trim());
             }
           }
-        } catch { /* ignore malformed lines */ }
+        } catch {
+          /* ignore malformed lines */
+        }
       }
       if (blocks.length === 0) return;
-      const ts = new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
+      const ts = new Date()
+        .toISOString()
+        .replace('T', ' ')
+        .replace(/\.\d+Z$/, ' UTC');
       const entry = `\n\n## CEO Agent Session — ${ts}\n\n${blocks.join('\n\n---\n\n')}\n`;
       const claudeMdPath = path.join(agent.folderPath, 'CLAUDE.md');
       fs.appendFileSync(claudeMdPath, entry, 'utf8');
@@ -192,7 +208,15 @@ export class AgentManager {
     }
   }
 
-  async launchAgent(folderPath: string, bypassPermissions = false, mode?: AgentMode, headless = false, headlessModel?: string, effort?: AgentEffort, isCeo = false): Promise<number> {
+  async launchAgent(
+    folderPath: string,
+    bypassPermissions = false,
+    mode?: AgentMode,
+    headless = false,
+    headlessModel?: string,
+    effort?: AgentEffort,
+    isCeo = false,
+  ): Promise<number> {
     const sessionId = crypto.randomUUID();
     const agentId = this.nextAgentId++;
     const folderName = path.basename(folderPath);
@@ -229,7 +253,9 @@ export class AgentManager {
 
     this.agents.set(agentId, agent);
 
-    console.log(`[Pixel Agents] Launching agent ${agentId} with session ${sessionId} (headless=${headless})`);
+    console.log(
+      `[Pixel Agents] Launching agent ${agentId} with session ${sessionId} (headless=${headless})`,
+    );
 
     if (headless) {
       // Headless mode: no subprocess yet — spawned on first sendHeadlessMessage via --print
@@ -241,7 +267,8 @@ export class AgentManager {
         ? '--dangerously-skip-permissions --permission-mode acceptEdits'
         : '--permission-mode acceptEdits';
       // Export PATH so the shell can find the claude binary even if ~/.local/bin isn't in the default PATH
-      const cmd = `export PATH="${LOCAL_BIN}:$PATH" && cd ${JSON.stringify(folderPath)} && ${CLAUDE_BIN} --session-id ${sessionId} ${claudeFlags} ${ADD_DIR_SHELL}`.trim();
+      const cmd =
+        `export PATH="${LOCAL_BIN}:$PATH" && cd ${JSON.stringify(folderPath)} && ${CLAUDE_BIN} --session-id ${sessionId} ${claudeFlags} ${ADD_DIR_SHELL}`.trim();
 
       const appleScript = [
         'tell application "Terminal"',
@@ -272,7 +299,12 @@ export class AgentManager {
               const queued = a.pendingMessages ?? [];
               a.pendingMessages = [];
               // First queued message gets extra delay so Claude Code finishes init
-              queued.forEach((m, i) => setTimeout(() => appleScriptTypeInTerminal(ttyPath, m, true, i === 0 ? 3.0 : 0.3), i * 500));
+              queued.forEach((m, i) =>
+                setTimeout(
+                  () => appleScriptTypeInTerminal(ttyPath, m, true, i === 0 ? 3.0 : 0.3),
+                  i * 500,
+                ),
+              );
             }, 800);
           }
           if (!bypassPermissions) {
@@ -295,6 +327,64 @@ export class AgentManager {
       this.waitForJsonlFile(agentId, projectDir, sessionId);
     }
 
+    return agentId;
+  }
+
+  /** Register a character for an external Claude session adopted via hook events
+   *  (e.g. the vault CEO session or a manually launched fleet session). Purely
+   *  observational: no terminal, no subprocess, never persisted, never messaged.
+   *  Removed on SessionEnd or by the staleness sweep. */
+  registerExternalAgent(sessionId: string, folderPath: string, name: string): number {
+    const agentId = this.nextAgentId++;
+    const folderName = path.basename(folderPath);
+    const projectDir = getProjectDirPath(folderPath);
+
+    const agent: StandaloneAgent = {
+      id: agentId,
+      sessionId,
+      projectDir,
+      jsonlFile: '',
+      fileOffset: 0,
+      lineBuffer: '',
+      activeToolIds: new Set(),
+      activeToolStatuses: new Map(),
+      activeToolNames: new Map(),
+      activeSubagentToolIds: new Map(),
+      activeSubagentToolNames: new Map(),
+      backgroundAgentToolIds: new Set(),
+      isWaiting: false,
+      permissionSent: false,
+      hadToolsInTurn: false,
+      hookDelivered: true,
+      folderPath,
+      folderName,
+      lastDataAt: 0,
+      linesProcessed: 0,
+      turnInputTokens: 0,
+      turnOutputTokens: 0,
+      seenUnknownRecordTypes: new Set(),
+      observed: true,
+      lastHookAt: Date.now(),
+      customName: name,
+    };
+    this.agents.set(agentId, agent);
+    this.broadcast({ type: 'agentCreated', id: agentId, folderName });
+    this.broadcast({ type: 'agentMetaUpdated', id: agentId, name });
+
+    // Attach the transcript for token counts + subagent visualization. Adopting
+    // mid-session: seek to end of file so history isn't replayed as live events.
+    const expectedFile = path.join(projectDir, `${sessionId}.jsonl`);
+    try {
+      if (fs.existsSync(expectedFile)) {
+        agent.jsonlFile = expectedFile;
+        agent.fileOffset = fs.statSync(expectedFile).size;
+        this.startPolling(agentId);
+      } else {
+        this.waitForJsonlFile(agentId, projectDir, sessionId);
+      }
+    } catch {
+      this.waitForJsonlFile(agentId, projectDir, sessionId);
+    }
     return agentId;
   }
 
@@ -336,13 +426,31 @@ export class AgentManager {
     }
 
     const claudeArgs = isFirstMessage
-      ? ['--session-id', agent.sessionId, '--dangerously-skip-permissions', '--permission-mode', 'acceptEdits', ...ADD_DIR_ARGS, '--print']
-      : ['--resume', agent.sessionId, '--dangerously-skip-permissions', '--permission-mode', 'acceptEdits', ...ADD_DIR_ARGS, '--print'];
+      ? [
+          '--session-id',
+          agent.sessionId,
+          '--dangerously-skip-permissions',
+          '--permission-mode',
+          'acceptEdits',
+          ...ADD_DIR_ARGS,
+          '--print',
+        ]
+      : [
+          '--resume',
+          agent.sessionId,
+          '--dangerously-skip-permissions',
+          '--permission-mode',
+          'acceptEdits',
+          ...ADD_DIR_ARGS,
+          '--print',
+        ];
     if (agent.headlessModel) claudeArgs.push('--model', agent.headlessModel);
     if (agent.systemPrompt) claudeArgs.push('--system-prompt', agent.systemPrompt);
     claudeArgs.push(fullMessage);
 
-    console.log(`[Pixel Agents] Agent ${agentId} (headless): spawning ${CLAUDE_BIN} --print${agent.headlessModel ? ` --model ${agent.headlessModel}` : ''}`);
+    console.log(
+      `[Pixel Agents] Agent ${agentId} (headless): spawning ${CLAUDE_BIN} --print${agent.headlessModel ? ` --model ${agent.headlessModel}` : ''}`,
+    );
     const child = child_process.spawn(CLAUDE_BIN, claudeArgs, {
       cwd: agent.folderPath,
       stdio: ['ignore', 'inherit', 'inherit'],
@@ -391,7 +499,9 @@ export class AgentManager {
         return;
       }
       if (Date.now() - startTime > JSONL_DISCOVERY_TIMEOUT_MS) {
-        console.warn(`[Pixel Agents] Agent ${agentId}: JSONL file not found after ${JSONL_DISCOVERY_TIMEOUT_MS}ms`);
+        console.warn(
+          `[Pixel Agents] Agent ${agentId}: JSONL file not found after ${JSONL_DISCOVERY_TIMEOUT_MS}ms`,
+        );
         clearInterval(discover);
         return;
       }
@@ -463,7 +573,9 @@ export class AgentManager {
     if (!agent) return;
 
     if (agent.childProcess) {
-      try { agent.childProcess.kill(); } catch {}
+      try {
+        agent.childProcess.kill();
+      } catch {}
     }
 
     // For terminal-mode agents closed from the UI (not from a hook), kill the claude
@@ -499,9 +611,15 @@ export class AgentManager {
     if (agent.waitingTimer) clearTimeout(agent.waitingTimer);
 
     const waitTimer = this.waitingTimers.get(id);
-    if (waitTimer) { clearTimeout(waitTimer); this.waitingTimers.delete(id); }
+    if (waitTimer) {
+      clearTimeout(waitTimer);
+      this.waitingTimers.delete(id);
+    }
     const permTimer = this.permissionTimers.get(id);
-    if (permTimer) { clearTimeout(permTimer); this.permissionTimers.delete(id); }
+    if (permTimer) {
+      clearTimeout(permTimer);
+      this.permissionTimers.delete(id);
+    }
 
     this.agents.delete(id);
     this.broadcast({ type: 'agentClosed', id });
@@ -535,6 +653,8 @@ export class AgentManager {
         folderName: p.folderName,
         lastDataAt: 0,
         linesProcessed: 0,
+        turnInputTokens: 0,
+        turnOutputTokens: 0,
         seenUnknownRecordTypes: new Set(),
         palette: p.palette,
         hueShift: p.hueShift,
@@ -573,7 +693,9 @@ export class AgentManager {
       this.agents.set(p.id, agent);
       if (p.id >= this.nextAgentId) this.nextAgentId = p.id + 1;
       this.startPolling(p.id);
-      console.log(`[Pixel Agents] Restored agent ${p.id} (${p.folderName})${!p.isCeo ? ' — converted to headless' : ''}`);
+      console.log(
+        `[Pixel Agents] Restored agent ${p.id} (${p.folderName})${!p.isCeo ? ' — converted to headless' : ''}`,
+      );
     }
   }
 
@@ -581,6 +703,9 @@ export class AgentManager {
   serializeAgents(): PersistedAppAgent[] {
     const result: PersistedAppAgent[] = [];
     for (const agent of this.agents.values()) {
+      // Observed external sessions are never persisted — a restart must not
+      // resurrect them as spawnable headless agents.
+      if (agent.observed) continue;
       if (agent.jsonlFile) {
         result.push({
           id: agent.id,

@@ -10,24 +10,25 @@ import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
-
 import { PNG } from 'pngjs';
-import { WebSocketServer } from 'ws';
+import { fileURLToPath } from 'url';
 import type { WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 
-import { AgentManager, appleScriptTypeInTerminal, buildInstruction } from './agentManager.js';
-import type { AgentEffort, AgentMode } from './types.js';
-import { loadAssets } from './assetLoader.js';
-import { readAppConfig, writeAppConfig } from './configManager.js';
-import { loadOrInitLayout, writeLayout } from './layoutManager.js';
-import { formatToolStatus } from './transcriptProcessor.js';
 import {
+  flushAgentHistory,
+  getAgentHistorySnapshot,
   loadAgentHistory,
   recordTurnComplete,
-  getAgentHistorySnapshot,
-  flushAgentHistory,
 } from './agentHistoryStore.js';
+import { AgentManager, appleScriptTypeInTerminal, buildInstruction } from './agentManager.js';
+import { loadAssets } from './assetLoader.js';
+import { readAppConfig, writeAppConfig } from './configManager.js';
+import type { FleetWatcher } from './fleetWatcher.js';
+import { startFleetWatcher } from './fleetWatcher.js';
+import { loadOrInitLayout, writeLayout } from './layoutManager.js';
+import { formatToolStatus } from './transcriptProcessor.js';
+import type { AgentEffort, AgentMode } from './types.js';
 import type { AppConfig } from './types.js';
 
 // ── Path resolution ─────────────────────────────────────────────────────────
@@ -39,6 +40,8 @@ const ASSETS_DIR = path.join(PROJECT_ROOT, 'webview-ui', 'public', 'assets');
 const WEBVIEW_DIST = path.join(__dirname, '..', 'dist', 'webview');
 const APP_PORT = parseInt(process.env.PORT ?? '4000', 10);
 const HOOK_PORT = parseInt(process.env.HOOK_PORT ?? '4001', 10);
+/** Root of a claude-brain style vault (fleet/ + projects/) to observe. Optional. */
+const VAULT_ROOT = process.env.PIXEL_AGENTS_VAULT_ROOT ?? '';
 
 const EXTENSION_VERSION = '1.0.0';
 
@@ -51,7 +54,9 @@ function readImportedSprites(): Set<string> {
   try {
     const data = JSON.parse(fs.readFileSync(IMPORTED_SPRITES_PATH, 'utf-8')) as string[];
     return new Set(data);
-  } catch { return new Set(); }
+  } catch {
+    return new Set();
+  }
 }
 
 function writeImportedSprites(set: Set<string>): void {
@@ -61,7 +66,12 @@ function writeImportedSprites(set: Set<string>): void {
 }
 
 // ── PNG tile slicer ──────────────────────────────────────────────────────────
-interface SlicedTile { id: string; dataUrl: string; width: number; height: number; }
+interface SlicedTile {
+  id: string;
+  dataUrl: string;
+  width: number;
+  height: number;
+}
 
 function slicePng(pngPath: string, tileW: number, tileH: number, prefix: string): SlicedTile[] {
   const buf = fs.readFileSync(pngPath);
@@ -83,7 +93,10 @@ function slicePng(pngPath: string, tileW: number, tileH: number, prefix: string)
       // Skip fully-transparent tiles
       let hasPixel = false;
       for (let i = 3; i < tile.data.length; i += 4) {
-        if (tile.data[i] > 2) { hasPixel = true; break; }
+        if (tile.data[i] > 2) {
+          hasPixel = true;
+          break;
+        }
       }
       if (!hasPixel) continue;
       const pngBuf = PNG.sync.write(tile);
@@ -113,8 +126,9 @@ function scanInventory(importedIds: Set<string>): InventorySprite[] {
   // 1. Individual sprites from office_assets/separately_assets/
   const sepDir = path.join(PIXEL_INVENTORY_ROOT, 'office_assets', 'separately_assets');
   if (fs.existsSync(sepDir)) {
-    const files = fs.readdirSync(sepDir)
-      .filter(f => /^Sprite-\d+\.png$/i.test(f))
+    const files = fs
+      .readdirSync(sepDir)
+      .filter((f) => /^Sprite-\d+\.png$/i.test(f))
       .sort();
     for (const f of files) {
       const fullPath = path.join(sepDir, f);
@@ -148,24 +162,36 @@ function toGrayscalePng(base64Data: string): Buffer {
   const buf = Buffer.from(base64Data, 'base64');
   const png = PNG.sync.read(buf);
   for (let i = 0; i < png.data.length; i += 4) {
-    const luma = Math.round(0.299 * png.data[i] + 0.587 * png.data[i + 1] + 0.114 * png.data[i + 2]);
-    png.data[i] = luma; png.data[i + 1] = luma; png.data[i + 2] = luma;
+    const luma = Math.round(
+      0.299 * png.data[i] + 0.587 * png.data[i + 1] + 0.114 * png.data[i + 2],
+    );
+    png.data[i] = luma;
+    png.data[i + 1] = luma;
+    png.data[i + 2] = luma;
   }
   return PNG.sync.write(png);
 }
 
 // ── Slug helper ──────────────────────────────────────────────────────────────
 function slugify(name: string): string {
-  return name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 // ── Body reader ──────────────────────────────────────────────────────────────
 function readBody(req: http.IncomingMessage, maxBytes = 524288): Promise<string> {
   return new Promise((resolve, reject) => {
-    let body = ''; let size = 0;
+    let body = '';
+    let size = 0;
     req.on('data', (chunk: Buffer) => {
       size += chunk.length;
-      if (size > maxBytes) { reject(new Error('too large')); req.destroy(); return; }
+      if (size > maxBytes) {
+        reject(new Error('too large'));
+        req.destroy();
+        return;
+      }
       body += chunk.toString();
     });
     req.on('end', () => resolve(body));
@@ -187,6 +213,29 @@ function broadcast(msg: object): void {
 }
 
 const agentManager = new AgentManager(broadcast);
+
+let fleetWatcher: FleetWatcher | null = null;
+if (VAULT_ROOT) {
+  if (fs.existsSync(VAULT_ROOT)) {
+    fleetWatcher = startFleetWatcher(VAULT_ROOT, broadcast);
+  } else {
+    console.error(`[Pixel Agents] PIXEL_AGENTS_VAULT_ROOT does not exist: ${VAULT_ROOT}`);
+  }
+}
+
+// Observed external sessions that stop sending hook events (crash, force-quit)
+// never get a SessionEnd — sweep them out after 30 minutes of silence.
+const OBSERVED_STALE_MS = 30 * 60_000;
+setInterval(() => {
+  for (const [id, a] of agentManager.getAgents()) {
+    if (a.observed && a.lastHookAt && Date.now() - a.lastHookAt > OBSERVED_STALE_MS) {
+      console.log(
+        `[Pixel Agents] Removing stale observed agent ${id} (${a.customName ?? a.folderName})`,
+      );
+      agentManager.removeAgent(id, true);
+    }
+  }
+}, 5 * 60_000);
 
 // ── Static file server helper ───────────────────────────────────────────────
 function serveStatic(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -255,7 +304,12 @@ function startHookServer(): void {
       let bodySize = 0;
       req.on('data', (chunk: Buffer) => {
         bodySize += chunk.length;
-        if (bodySize > 65536) { res.writeHead(413); res.end(); req.destroy(); return; }
+        if (bodySize > 65536) {
+          res.writeHead(413);
+          res.end();
+          req.destroy();
+          return;
+        }
         body += chunk.toString();
       });
       req.on('end', () => {
@@ -311,12 +365,31 @@ function handleHookEvent(event: Record<string, unknown>): void {
       break;
     }
   }
-  if (agentId === undefined) return;
+
+  // Unknown session: adopt it as an observed character when it runs inside the
+  // watched vault (e.g. the CEO main session or a manually launched fleet agent).
+  if (agentId === undefined) {
+    const cwd = typeof event.cwd === 'string' ? event.cwd : '';
+    const inVault =
+      VAULT_ROOT && cwd && (cwd === VAULT_ROOT || cwd.startsWith(VAULT_ROOT + path.sep));
+    if (!inVault || eventName === 'SessionEnd') return;
+    const name =
+      cwd === VAULT_ROOT
+        ? `CEO·${sessionId.slice(0, 4)}`
+        : `${path.basename(cwd)}·${sessionId.slice(0, 4)}`;
+    agentId = agentManager.registerExternalAgent(sessionId, cwd, name);
+    const adopted = agentManager.getAgents().get(agentId);
+    if (adopted && cwd === VAULT_ROOT) adopted.role = 'ceo';
+    console.log(
+      `[Pixel Agents] Adopted external vault session ${sessionId.slice(0, 8)}… as agent ${agentId} (${name})`,
+    );
+  }
 
   const agent = agentManager.getAgents().get(agentId);
   if (!agent) return;
 
   agent.hookDelivered = true;
+  if (agent.observed) agent.lastHookAt = Date.now();
 
   switch (eventName) {
     case 'Stop':
@@ -340,7 +413,9 @@ function handleHookEvent(event: Record<string, unknown>): void {
       {
         const durationMs = agent.turnStartAt ? Date.now() - agent.turnStartAt : undefined;
         broadcast({
-          type: 'agentStatus', id: agentId, status: 'waiting',
+          type: 'agentStatus',
+          id: agentId,
+          status: 'waiting',
           durationMs,
           inputTokens: agent.turnInputTokens || undefined,
           outputTokens: agent.turnOutputTokens || undefined,
@@ -392,7 +467,9 @@ function handleHookEvent(event: Record<string, unknown>): void {
         broadcast({ type: 'agentToolsClear', id: agentId });
         const durationMs = agent.turnStartAt ? Date.now() - agent.turnStartAt : undefined;
         broadcast({
-          type: 'agentStatus', id: agentId, status: 'waiting',
+          type: 'agentStatus',
+          id: agentId,
+          status: 'waiting',
           durationMs,
           inputTokens: agent.turnInputTokens || undefined,
           outputTokens: agent.turnOutputTokens || undefined,
@@ -404,10 +481,28 @@ function handleHookEvent(event: Record<string, unknown>): void {
       } else if (agent.isCeo) {
         // CEO agents can never be terminated from the terminal — write session to CLAUDE.md then relaunch.
         (async () => {
-          const { folderPath, palette, hueShift, customName, seatId, task, mode, effort, homeZoneId } = agent;
+          const {
+            folderPath,
+            palette,
+            hueShift,
+            customName,
+            seatId,
+            task,
+            mode,
+            effort,
+            homeZoneId,
+          } = agent;
           await agentManager.writeCeoSessionToClaudeMd(agent);
           agentManager.removeAgent(agentId, true);
-          const newId = await agentManager.launchAgent(folderPath, true, mode, false, undefined, effort, true);
+          const newId = await agentManager.launchAgent(
+            folderPath,
+            true,
+            mode,
+            false,
+            undefined,
+            effort,
+            true,
+          );
           const newAgent = agentManager.getAgents().get(newId);
           if (newAgent) {
             if (palette !== undefined) newAgent.palette = palette;
@@ -477,11 +572,20 @@ async function handleClientMessage(
         send({ type: 'wallTilesLoaded', sets: assets.walls });
       }
       if (assets.furnitureCatalog.length > 0) {
-        send({ type: 'furnitureAssetsLoaded', catalog: assets.furnitureCatalog, sprites: assets.furnitureSprites });
+        send({
+          type: 'furnitureAssetsLoaded',
+          catalog: assets.furnitureCatalog,
+          sprites: assets.furnitureSprites,
+        });
       }
 
       // Send layout
       send({ type: 'layoutLoaded', layout: layout.layout, wasReset: layout.wasReset });
+
+      // Send fleet state (vault integration), if a vault is being watched
+      if (fleetWatcher) {
+        send({ type: 'fleetState', state: fleetWatcher.getState() });
+      }
 
       // Send existing agents
       const agentIds: number[] = [];
@@ -516,12 +620,33 @@ async function handleClientMessage(
         if (agent.homeZoneId) agentHomeZones[id] = agent.homeZoneId;
         if (agent.isCeo) agentCeoFlags[id] = true;
         if (agent.role) agentRoles[id] = agent.role;
-        if (agent.canSpawn) { agentCanSpawn[id] = true; agentMaxSpawn[id] = agent.maxSpawn ?? 3; }
+        if (agent.canSpawn) {
+          agentCanSpawn[id] = true;
+          agentMaxSpawn[id] = agent.maxSpawn ?? 3;
+        }
         // Restore current activity state on page reload — derived from in-memory agent state
-        const isCurrentlyActive = !agent.isWaiting && (agent.turnStartAt !== undefined || agent.activeToolIds.size > 0);
+        const isCurrentlyActive =
+          !agent.isWaiting && (agent.turnStartAt !== undefined || agent.activeToolIds.size > 0);
         agentStatuses[id] = isCurrentlyActive ? 'active' : 'waiting';
       }
-      send({ type: 'existingAgents', agents: agentIds, agentMeta, folderNames, folderPaths, agentNames, agentTasks, agentModes, agentEfforts, agentHomeZones, agentCeoFlags, agentRoles, agentCanSpawn, agentMaxSpawn, agentStatuses, agentHistoryTotals: getAgentHistorySnapshot() });
+      send({
+        type: 'existingAgents',
+        agents: agentIds,
+        agentMeta,
+        folderNames,
+        folderPaths,
+        agentNames,
+        agentTasks,
+        agentModes,
+        agentEfforts,
+        agentHomeZones,
+        agentCeoFlags,
+        agentRoles,
+        agentCanSpawn,
+        agentMaxSpawn,
+        agentStatuses,
+        agentHistoryTotals: getAgentHistorySnapshot(),
+      });
       break;
     }
 
@@ -539,16 +664,85 @@ async function handleClientMessage(
           // Ghost CEO (restored from roster but no live terminal) — remove and allow relaunch
           agentManager.removeAgent(existingCeo.id, true);
         } else {
-          send({ type: 'error', message: 'A CEO agent already exists. Only one CEO agent is allowed at a time.' });
+          send({
+            type: 'error',
+            message: 'A CEO agent already exists. Only one CEO agent is allowed at a time.',
+          });
           break;
         }
       }
       try {
-        const newId = await agentManager.launchAgent(folderPath, bypassPermissions, openMode, headlessMode, headlessModel, openEffort, isCeo);
-        if (isCeo) { const a = agentManager.getAgents().get(newId); if (a) a.role = 'ceo'; }
+        const newId = await agentManager.launchAgent(
+          folderPath,
+          bypassPermissions,
+          openMode,
+          headlessMode,
+          headlessModel,
+          openEffort,
+          isCeo,
+        );
+        if (isCeo) {
+          const a = agentManager.getAgents().get(newId);
+          if (a) a.role = 'ceo';
+        }
         saveConfig();
       } catch (err) {
         console.error('[Pixel Agents] Failed to launch agent:', err);
+      }
+      break;
+    }
+
+    case 'spawnFromBrief': {
+      // Spawn a fleet agent from a pending inbox brief in the watched vault.
+      // Dispatch contract per the vault's CLAUDE.md: "Execute the brief at <path>."
+      if (!VAULT_ROOT || !fleetWatcher) {
+        send({ type: 'error', message: 'No vault configured — set PIXEL_AGENTS_VAULT_ROOT.' });
+        break;
+      }
+      const briefAgent = (msg.agent as string) ?? '';
+      const briefFile = (msg.brief as string) ?? '';
+      // Both names come from the fleet tree; reject anything path-like
+      if (
+        !/^[\w-]+$/.test(briefAgent) ||
+        !/^[\w.-]+\.md$/.test(briefFile) ||
+        briefFile.includes('..')
+      ) {
+        send({ type: 'error', message: 'Invalid agent or brief name.' });
+        break;
+      }
+      const briefPath = path.join(VAULT_ROOT, 'fleet', briefAgent, 'inbox', briefFile);
+      if (!fs.existsSync(briefPath)) {
+        send({ type: 'error', message: `Brief not found: fleet/${briefAgent}/inbox/${briefFile}` });
+        break;
+      }
+      try {
+        // Headless, cwd = vault root, so the agent wakes inside the vault per its wake rule
+        const newId = await agentManager.launchAgent(
+          VAULT_ROOT,
+          true,
+          undefined,
+          true,
+          undefined,
+          undefined,
+          false,
+        );
+        const spawned = agentManager.getAgents().get(newId);
+        if (spawned) {
+          spawned.customName = briefAgent;
+          spawned.role = 'worker';
+          spawned.task = `Execute fleet/${briefAgent}/inbox/${briefFile}`;
+          broadcast({ type: 'agentMetaUpdated', id: newId, name: briefAgent });
+          broadcast({ type: 'agentMetaUpdated', id: newId, role: 'worker' });
+          broadcast({ type: 'agentMetaUpdated', id: newId, task: spawned.task });
+        }
+        saveConfig();
+        agentManager.sendHeadlessMessage(
+          newId,
+          `Execute the brief at ${briefPath} as the ${briefAgent} fleet agent: adopt .claude/agents/${briefAgent}.md as your identity. Rules 7 and 9 apply — never run git commit; write only fleet/${briefAgent}/** plus the areas the brief assigns (and your own wiki/agents page per rule 9).`,
+        );
+      } catch (err) {
+        console.error('[Pixel Agents] Failed to spawn from brief:', err);
+        send({ type: 'error', message: 'Failed to spawn agent from brief.' });
       }
       break;
     }
@@ -578,15 +772,17 @@ async function handleClientMessage(
     case 'browseFile': {
       const agentId = msg.agentId as number;
       const imageOnly = msg.imageOnly as boolean | undefined;
-      const typeFilter = imageOnly
-        ? `of type {"public.image"}`
-        : '';
+      const typeFilter = imageOnly ? `of type {"public.image"}` : '';
       const prompt = imageOnly ? 'Select an image to attach' : 'Select a file to attach';
       child_process.exec(
         `osascript -e 'POSIX path of (choose file with prompt "${prompt}" ${typeFilter})'`,
         (err, stdout) => {
           if (!err && stdout.trim()) {
-            send({ type: 'fileSelectedForAttach', agentId, path: stdout.trim().replace(/\n$/, '') });
+            send({
+              type: 'fileSelectedForAttach',
+              agentId,
+              path: stdout.trim().replace(/\n$/, ''),
+            });
           }
         },
       );
@@ -603,17 +799,34 @@ async function handleClientMessage(
     case 'ceoCatchUp': {
       const ceoAgent = agentManager.getCeoAgent();
       if (!ceoAgent) break;
-      const catchUpMsg = 'Read your CLAUDE.md file in your working folder and catch up on all information from previous sessions. Summarize what you know and what has been done, then await further instructions.';
+      const catchUpMsg =
+        'Read your CLAUDE.md file in your working folder and catch up on all information from previous sessions. Summarize what you know and what has been done, then await further instructions.';
       if (ceoAgent.headless) {
         agentManager.sendHeadlessMessage(ceoAgent.id, catchUpMsg);
       } else if (ceoAgent.ttyPath) {
         appleScriptTypeInTerminal(ceoAgent.ttyPath, catchUpMsg);
       } else {
         // Ghost CEO — no live terminal. Relaunch it, then send catch up once TTY is ready.
-        const { folderPath, palette, hueShift, customName, seatId, task, mode, effort, homeZoneId } = ceoAgent;
+        const {
+          folderPath,
+          palette,
+          hueShift,
+          customName,
+          seatId,
+          task,
+          mode,
+          effort,
+          homeZoneId,
+        } = ceoAgent;
         agentManager.removeAgent(ceoAgent.id, true);
         const newId = await agentManager.launchAgent(
-          folderPath || config.folders[0] || os.homedir(), true, mode, false, undefined, effort, true
+          folderPath || config.folders[0] || os.homedir(),
+          true,
+          mode,
+          false,
+          undefined,
+          effort,
+          true,
         );
         const newAgent = agentManager.getAgents().get(newId);
         if (newAgent) {
@@ -635,7 +848,7 @@ async function handleClientMessage(
     }
 
     case 'spawnTeam': {
-      const project = (message as { project?: string }).project || 'default';
+      const project = (msg as { project?: string }).project || 'default';
       const claudeAgentsPath = path.join(os.homedir(), 'Claude-Agents');
       const spawnTeamScript = path.join(claudeAgentsPath, 'spawn-team.mjs');
 
@@ -656,7 +869,11 @@ async function handleClientMessage(
 
       let lastLine = '';
       const captureLine = (chunk: Buffer) => {
-        const lines = chunk.toString().split('\n').map((l) => l.trim()).filter(Boolean);
+        const lines = chunk
+          .toString()
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean);
         if (lines.length > 0) lastLine = lines[lines.length - 1];
       };
       subprocess.stdout?.on('data', captureLine);
@@ -691,7 +908,12 @@ async function handleClientMessage(
       broadcast({ type: 'agentUserMessage', id, message });
       // Fast-fail if this is a ghost terminal agent (no live tab, not headless)
       if (!agent.headless && !agent.ttyPath && !agent.isCeo) {
-        send({ type: 'agentNotReady', id, reason: 'Ghost terminal agent — no live terminal tab. Restart server (auto-converts to headless).' });
+        send({
+          type: 'agentNotReady',
+          id,
+          reason:
+            'Ghost terminal agent — no live terminal tab. Restart server (auto-converts to headless).',
+        });
         break;
       }
       if (agent.headless) {
@@ -704,13 +926,33 @@ async function handleClientMessage(
         // Terminal agent whose TTY isn't ready yet — queue until it is
         if (!agent.pendingMessages) agent.pendingMessages = [];
         agent.pendingMessages.push(message);
-        console.log(`[Pixel Agents] Agent ${id}: TTY not ready, queued message (${agent.pendingMessages.length} pending)`);
+        console.log(
+          `[Pixel Agents] Agent ${id}: TTY not ready, queued message (${agent.pendingMessages.length} pending)`,
+        );
       } else if (agent.isCeo) {
         // CEO has no terminal yet (e.g. after server restart) — relaunch first
         (async () => {
-          const { folderPath, palette, hueShift, customName, seatId, task, mode, effort, homeZoneId } = agent;
+          const {
+            folderPath,
+            palette,
+            hueShift,
+            customName,
+            seatId,
+            task,
+            mode,
+            effort,
+            homeZoneId,
+          } = agent;
           agentManager.removeAgent(id, true);
-          const newId = await agentManager.launchAgent(folderPath, true, mode, false, undefined, effort, true);
+          const newId = await agentManager.launchAgent(
+            folderPath,
+            true,
+            mode,
+            false,
+            undefined,
+            effort,
+            true,
+          );
           const newAgent = agentManager.getAgents().get(newId);
           if (newAgent) {
             if (palette !== undefined) newAgent.palette = palette;
@@ -845,7 +1087,9 @@ async function handleClientMessage(
       try {
         const rooms = JSON.parse(fs.readFileSync(PREMADE_ROOMS_PATH, 'utf-8'));
         send({ type: 'adminRoomsLoaded', rooms });
-      } catch { send({ type: 'adminRoomsLoaded', rooms: [] }); }
+      } catch {
+        send({ type: 'adminRoomsLoaded', rooms: [] });
+      }
       break;
     }
 
@@ -855,7 +1099,9 @@ async function handleClientMessage(
         if (!Array.isArray(rooms)) break;
         fs.writeFileSync(PREMADE_ROOMS_PATH, JSON.stringify(rooms, null, 2));
         broadcast({ type: 'adminRoomsSaved', ok: true });
-      } catch { send({ type: 'adminRoomsSaved', ok: false }); }
+      } catch {
+        send({ type: 'adminRoomsSaved', ok: false });
+      }
       break;
     }
 
@@ -941,7 +1187,13 @@ async function handleClientMessage(
         broadcast({ type: 'agentMetaUpdated', id, canSpawn: agent.canSpawn, maxSpawn: ms });
       } else if (typeof msg.maxSpawn === 'number') {
         agent.maxSpawn = msg.maxSpawn;
-        if (agent.canSpawn) broadcast({ type: 'agentMetaUpdated', id, canSpawn: agent.canSpawn, maxSpawn: agent.maxSpawn });
+        if (agent.canSpawn)
+          broadcast({
+            type: 'agentMetaUpdated',
+            id,
+            canSpawn: agent.canSpawn,
+            maxSpawn: agent.maxSpawn,
+          });
       }
       saveConfig();
       break;
@@ -954,7 +1206,12 @@ async function handleClientMessage(
       if (!a) {
         send({ type: 'agentReady', id: checkId, ready: false, reason: 'Agent not found' });
       } else if (!a.headless && !a.ttyPath) {
-        send({ type: 'agentReady', id: checkId, ready: false, reason: 'Ghost terminal — no live tab. Restart server to auto-convert to headless.' });
+        send({
+          type: 'agentReady',
+          id: checkId,
+          ready: false,
+          reason: 'Ghost terminal — no live tab. Restart server to auto-convert to headless.',
+        });
       } else {
         send({ type: 'agentReady', id: checkId, ready: true });
       }
@@ -963,7 +1220,7 @@ async function handleClientMessage(
 
     // Fix 5 — list all agents for ceo-init
     case 'listAgents': {
-      const agents = Array.from(agentManager.getAgents().values()).map(a => ({
+      const agents = Array.from(agentManager.getAgents().values()).map((a) => ({
         id: a.id,
         name: a.customName,
         headless: a.headless,
@@ -987,8 +1244,9 @@ async function handleClientMessage(
         lastTrained: string;
         metadata?: Record<string, unknown>;
       };
-      const target = Array.from(agentManager.getAgents().values())
-        .find(a => a.customName?.toLowerCase() === agentName?.toLowerCase());
+      const target = Array.from(agentManager.getAgents().values()).find(
+        (a) => a.customName?.toLowerCase() === agentName?.toLowerCase(),
+      );
       if (target) {
         target.systemPrompt = systemPrompt;
         target.promptVersion = version;
@@ -997,7 +1255,12 @@ async function handleClientMessage(
         send({ type: 'agentPromptApplied', agentName, version });
       } else {
         // Agent not running — still ack so ceo-init doesn't time out
-        send({ type: 'agentPromptApplied', agentName, version, note: 'Agent not running — stored on next spawn' });
+        send({
+          type: 'agentPromptApplied',
+          agentName,
+          version,
+          note: 'Agent not running — stored on next spawn',
+        });
       }
       break;
     }
@@ -1005,14 +1268,37 @@ async function handleClientMessage(
     // Fix 7 — self-modification proposal (gated by env var)
     case 'proposeAgent': {
       if (!process.env.PIXEL_AGENTS_ALLOW_SELF_SPAWN) {
-        send({ type: 'agentProposeRejected', reason: 'Self-spawn disabled. Set PIXEL_AGENTS_ALLOW_SELF_SPAWN=true to enable.' });
+        send({
+          type: 'agentProposeRejected',
+          reason: 'Self-spawn disabled. Set PIXEL_AGENTS_ALLOW_SELF_SPAWN=true to enable.',
+        });
         break;
       }
-      const { by, name: proposedName, task: proposedTask, role: proposedRole, trial, expiresAfter } = msg as {
-        by: number; name: string; task: string; role: string; trial: boolean; expiresAfter: string;
+      const {
+        by,
+        name: proposedName,
+        task: proposedTask,
+        role: proposedRole,
+        trial,
+        expiresAfter,
+      } = msg as {
+        by: number;
+        name: string;
+        task: string;
+        role: string;
+        trial: boolean;
+        expiresAfter: string;
       };
       const proposalId = Date.now();
-      broadcast({ type: 'agentProposed', proposalId, by: proposedName, task: proposedTask, role: proposedRole, trial, expiresAfter });
+      broadcast({
+        type: 'agentProposed',
+        proposalId,
+        by: proposedName,
+        task: proposedTask,
+        role: proposedRole,
+        trial,
+        expiresAfter,
+      });
       console.log(`[Pixel Agents] Agent proposal #${proposalId} from ${by}: ${proposedName}`);
       break;
     }
@@ -1023,11 +1309,22 @@ async function handleClientMessage(
         break;
       }
       const { proposedName, proposedTask, proposedRole, proposalId, parentId } = msg as {
-        proposedName: string; proposedTask: string; proposedRole: string;
-        proposalId: number; parentId?: number;
+        proposedName: string;
+        proposedTask: string;
+        proposedRole: string;
+        proposalId: number;
+        parentId?: number;
       };
       const folderPath = config.folders[0] || os.homedir();
-      const newId = await agentManager.launchAgent(folderPath, true, undefined, true, undefined, 'high', false);
+      const newId = await agentManager.launchAgent(
+        folderPath,
+        true,
+        undefined,
+        true,
+        undefined,
+        'high',
+        false,
+      );
       const newAgent = agentManager.getAgents().get(newId);
       if (newAgent) {
         newAgent.customName = proposedName;
@@ -1073,7 +1370,11 @@ async function main(): Promise<void> {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
 
     // ── Admin: rooms ─────────────────────────────────────────────────────────
     if (req.method === 'GET' && req.url === '/api/admin/rooms') {
@@ -1081,18 +1382,26 @@ async function main(): Promise<void> {
         const data = fs.readFileSync(PREMADE_ROOMS_PATH, 'utf-8');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(data);
-      } catch { res.writeHead(500); res.end('{"error":"read failed"}'); }
+      } catch {
+        res.writeHead(500);
+        res.end('{"error":"read failed"}');
+      }
       return;
     }
 
     if (req.method === 'PUT' && req.url === '/api/admin/rooms') {
-      readBody(req).then(body => {
-        const rooms = JSON.parse(body);
-        if (!Array.isArray(rooms)) throw new Error('not array');
-        fs.writeFileSync(PREMADE_ROOMS_PATH, JSON.stringify(rooms, null, 2));
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end('{"ok":true}');
-      }).catch(() => { res.writeHead(400); res.end('{"error":"invalid"}'); });
+      readBody(req)
+        .then((body) => {
+          const rooms = JSON.parse(body);
+          if (!Array.isArray(rooms)) throw new Error('not array');
+          fs.writeFileSync(PREMADE_ROOMS_PATH, JSON.stringify(rooms, null, 2));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end('{"ok":true}');
+        })
+        .catch(() => {
+          res.writeHead(400);
+          res.end('{"error":"invalid"}');
+        });
       return;
     }
 
@@ -1105,123 +1414,170 @@ async function main(): Promise<void> {
         res.end(JSON.stringify({ sources: sprites }));
       } catch (err) {
         console.error('[Pixel Agents] Inventory scan error:', err);
-        res.writeHead(500); res.end('{"error":"scan failed"}');
+        res.writeHead(500);
+        res.end('{"error":"scan failed"}');
       }
       return;
     }
 
     if (req.method === 'POST' && req.url === '/api/admin/save-default-layout') {
-      readBody(req, 4 * 1024 * 1024).then(body => {
-        const { layout } = JSON.parse(body) as { layout: unknown };
-        const dest = path.join(ASSETS_DIR, 'default-layout.json');
-        fs.writeFileSync(dest, JSON.stringify(layout, null, 2));
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
-      }).catch(err => {
-        console.error('[Pixel Agents] Save default layout error:', err);
-        res.writeHead(500); res.end(JSON.stringify({ ok: false, error: String(err) }));
-      });
+      readBody(req, 4 * 1024 * 1024)
+        .then((body) => {
+          const { layout } = JSON.parse(body) as { layout: unknown };
+          const dest = path.join(ASSETS_DIR, 'default-layout.json');
+          fs.writeFileSync(dest, JSON.stringify(layout, null, 2));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        })
+        .catch((err) => {
+          console.error('[Pixel Agents] Save default layout error:', err);
+          res.writeHead(500);
+          res.end(JSON.stringify({ ok: false, error: String(err) }));
+        });
       return;
     }
 
     if (req.method === 'POST' && req.url === '/api/admin/reload-assets') {
-      loadAssets(ASSETS_DIR, PROJECT_ROOT).then(freshAssets => {
-        if (freshAssets.floors.length > 0) {
-          broadcast({ type: 'floorTilesLoaded', sprites: freshAssets.floors });
-        }
-        if (freshAssets.furnitureCatalog.length > 0) {
-          broadcast({ type: 'furnitureAssetsLoaded', catalog: freshAssets.furnitureCatalog, sprites: freshAssets.furnitureSprites });
-        }
-        console.log(`[Pixel Agents] Assets reloaded: ${freshAssets.furnitureCatalog.length} furniture, ${freshAssets.floors.length} floors`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, furniture: freshAssets.furnitureCatalog.length, floors: freshAssets.floors.length }));
-      }).catch(err => {
-        console.error('[Pixel Agents] Reload assets error:', err);
-        res.writeHead(500); res.end(JSON.stringify({ ok: false, error: String(err) }));
-      });
+      loadAssets(ASSETS_DIR, PROJECT_ROOT)
+        .then((freshAssets) => {
+          if (freshAssets.floors.length > 0) {
+            broadcast({ type: 'floorTilesLoaded', sprites: freshAssets.floors });
+          }
+          if (freshAssets.furnitureCatalog.length > 0) {
+            broadcast({
+              type: 'furnitureAssetsLoaded',
+              catalog: freshAssets.furnitureCatalog,
+              sprites: freshAssets.furnitureSprites,
+            });
+          }
+          console.log(
+            `[Pixel Agents] Assets reloaded: ${freshAssets.furnitureCatalog.length} furniture, ${freshAssets.floors.length} floors`,
+          );
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              furniture: freshAssets.furnitureCatalog.length,
+              floors: freshAssets.floors.length,
+            }),
+          );
+        })
+        .catch((err) => {
+          console.error('[Pixel Agents] Reload assets error:', err);
+          res.writeHead(500);
+          res.end(JSON.stringify({ ok: false, error: String(err) }));
+        });
       return;
     }
 
     if (req.method === 'DELETE' && req.url?.startsWith('/api/admin/furniture/')) {
       const id = decodeURIComponent(req.url.slice('/api/admin/furniture/'.length));
       if (!id || id.includes('/') || id.includes('..')) {
-        res.writeHead(400); res.end('{"error":"invalid id"}');
+        res.writeHead(400);
+        res.end('{"error":"invalid id"}');
         return;
       }
       try {
         const furDir = path.join(ASSETS_DIR, 'furniture', id);
-        if (!fs.existsSync(furDir)) { res.writeHead(404); res.end('{"error":"not found"}'); return; }
+        if (!fs.existsSync(furDir)) {
+          res.writeHead(404);
+          res.end('{"error":"not found"}');
+          return;
+        }
         const disabledDir = path.join(ASSETS_DIR, 'furniture', '_disabled');
         fs.mkdirSync(disabledDir, { recursive: true });
         fs.renameSync(furDir, path.join(disabledDir, id));
         // Reload and broadcast updated catalog
-        loadAssets(ASSETS_DIR, PROJECT_ROOT).then(freshAssets => {
-          broadcast({ type: 'furnitureAssetsLoaded', catalog: freshAssets.furnitureCatalog, sprites: freshAssets.furnitureSprites });
-        }).catch(() => {});
+        loadAssets(ASSETS_DIR, PROJECT_ROOT)
+          .then((freshAssets) => {
+            broadcast({
+              type: 'furnitureAssetsLoaded',
+              catalog: freshAssets.furnitureCatalog,
+              sprites: freshAssets.furnitureSprites,
+            });
+          })
+          .catch(() => {});
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch (err) {
         console.error('[Pixel Agents] Delete furniture error:', err);
-        res.writeHead(500); res.end(JSON.stringify({ ok: false, error: String(err) }));
+        res.writeHead(500);
+        res.end(JSON.stringify({ ok: false, error: String(err) }));
       }
       return;
     }
 
     if (req.method === 'POST' && req.url === '/api/admin/import-sprite') {
-      readBody(req, 2 * 1024 * 1024).then(body => {
-        interface ImportReq {
-          sourceId: string; dataUrl: string; name: string;
-          category: string; footprintW: number; footprintH: number;
-          canPlaceOnWalls: boolean; canPlaceOnSurfaces: boolean; isFloor: boolean;
-        }
-        const req2 = JSON.parse(body) as ImportReq;
-        const base64 = req2.dataUrl.replace(/^data:image\/png;base64,/, '');
-        const pngBuf = Buffer.from(base64, 'base64');
-        const png = PNG.sync.read(pngBuf);
-
-        if (req2.isFloor) {
-          const floorsDir = path.join(ASSETS_DIR, 'floors');
-          fs.mkdirSync(floorsDir, { recursive: true });
-          const existing = fs.readdirSync(floorsDir).filter(f => /^floor_\d+\.png$/i.test(f));
-          const n = existing.length;
-          const gray = toGrayscalePng(base64);
-          fs.writeFileSync(path.join(floorsDir, `floor_${n}.png`), gray);
-          const imported = readImportedSprites();
-          imported.add(req2.sourceId);
-          writeImportedSprites(imported);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, id: `floor_${n}` }));
-        } else {
-          const id = slugify(req2.name);
-          if (!id) throw new Error('empty name');
-          const furDir = path.join(ASSETS_DIR, 'furniture', id);
-          const manifestPath = path.join(furDir, 'manifest.json');
-          if (fs.existsSync(manifestPath)) {
-            res.writeHead(409, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, error: `${id} already exists` }));
-            return;
+      readBody(req, 2 * 1024 * 1024)
+        .then((body) => {
+          interface ImportReq {
+            sourceId: string;
+            dataUrl: string;
+            name: string;
+            category: string;
+            footprintW: number;
+            footprintH: number;
+            canPlaceOnWalls: boolean;
+            canPlaceOnSurfaces: boolean;
+            isFloor: boolean;
           }
-          fs.mkdirSync(furDir, { recursive: true });
-          const assetId = `${id}_FRONT`;
-          fs.writeFileSync(path.join(furDir, `${assetId}.png`), pngBuf);
-          const manifest = {
-            type: 'asset', id, name: req2.name, category: req2.category,
-            file: `${assetId}.png`, width: png.width, height: png.height,
-            footprintW: req2.footprintW, footprintH: req2.footprintH,
-            orientation: 'front', canPlaceOnWalls: req2.canPlaceOnWalls,
-            canPlaceOnSurfaces: req2.canPlaceOnSurfaces,
-          };
-          fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-          const imported = readImportedSprites();
-          imported.add(req2.sourceId);
-          writeImportedSprites(imported);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, id }));
-        }
-      }).catch(err => {
-        console.error('[Pixel Agents] Import error:', err);
-        res.writeHead(400); res.end(JSON.stringify({ ok: false, error: String(err) }));
-      });
+          const req2 = JSON.parse(body) as ImportReq;
+          const base64 = req2.dataUrl.replace(/^data:image\/png;base64,/, '');
+          const pngBuf = Buffer.from(base64, 'base64');
+          const png = PNG.sync.read(pngBuf);
+
+          if (req2.isFloor) {
+            const floorsDir = path.join(ASSETS_DIR, 'floors');
+            fs.mkdirSync(floorsDir, { recursive: true });
+            const existing = fs.readdirSync(floorsDir).filter((f) => /^floor_\d+\.png$/i.test(f));
+            const n = existing.length;
+            const gray = toGrayscalePng(base64);
+            fs.writeFileSync(path.join(floorsDir, `floor_${n}.png`), gray);
+            const imported = readImportedSprites();
+            imported.add(req2.sourceId);
+            writeImportedSprites(imported);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, id: `floor_${n}` }));
+          } else {
+            const id = slugify(req2.name);
+            if (!id) throw new Error('empty name');
+            const furDir = path.join(ASSETS_DIR, 'furniture', id);
+            const manifestPath = path.join(furDir, 'manifest.json');
+            if (fs.existsSync(manifestPath)) {
+              res.writeHead(409, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ ok: false, error: `${id} already exists` }));
+              return;
+            }
+            fs.mkdirSync(furDir, { recursive: true });
+            const assetId = `${id}_FRONT`;
+            fs.writeFileSync(path.join(furDir, `${assetId}.png`), pngBuf);
+            const manifest = {
+              type: 'asset',
+              id,
+              name: req2.name,
+              category: req2.category,
+              file: `${assetId}.png`,
+              width: png.width,
+              height: png.height,
+              footprintW: req2.footprintW,
+              footprintH: req2.footprintH,
+              orientation: 'front',
+              canPlaceOnWalls: req2.canPlaceOnWalls,
+              canPlaceOnSurfaces: req2.canPlaceOnSurfaces,
+            };
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+            const imported = readImportedSprites();
+            imported.add(req2.sourceId);
+            writeImportedSprites(imported);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, id }));
+          }
+        })
+        .catch((err) => {
+          console.error('[Pixel Agents] Import error:', err);
+          res.writeHead(400);
+          res.end(JSON.stringify({ ok: false, error: String(err) }));
+        });
       return;
     }
 
@@ -1266,6 +1622,7 @@ async function main(): Promise<void> {
       if (agent.ttyPath) agentManager.removeAgent(id, false);
     }
     saveConfig();
+    fleetWatcher?.dispose();
     agentManager.dispose();
     // Clean up server.json
     try {
@@ -1274,7 +1631,9 @@ async function main(): Promise<void> {
         const data = JSON.parse(fs.readFileSync(serverJsonPath, 'utf-8')) as { pid: number };
         if (data.pid === process.pid) fs.unlinkSync(serverJsonPath);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     process.exit(0);
   };
   process.on('SIGINT', shutdown);

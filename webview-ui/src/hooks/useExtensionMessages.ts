@@ -73,6 +73,45 @@ export interface ChatMessage {
   ts: number;
 }
 
+// ── Fleet (claude-brain vault) state — mirror of app/src/fleetWatcher.ts ──────
+
+export interface FleetBoardRow {
+  agent: string;
+  task: string;
+  tier: string;
+  status: string;
+}
+
+export interface FleetPhasePlan {
+  title: string;
+  items: { text: string; done: boolean }[];
+}
+
+export interface FleetProject {
+  slug: string;
+  boardPhase: number | null;
+  boardGate: string | null;
+  rows: FleetBoardRow[];
+  blockers: string | null;
+  nextGate: string | null;
+  phase: number | null;
+  phaseName: string | null;
+  gate: string | null;
+  gateLog: string[];
+  plans: FleetPhasePlan[];
+}
+
+export interface FleetState {
+  vaultRoot: string;
+  boardUpdated: string | null;
+  activeProjects: string[];
+  idleRoster: string[];
+  projects: FleetProject[];
+  inboxes: Record<string, string[]>;
+  drift: string[];
+  generatedAt: number;
+}
+
 const MAX_HISTORY_PER_AGENT = 30;
 
 interface ExtensionMessageState {
@@ -113,8 +152,17 @@ interface ExtensionMessageState {
   agentLastMessageAt: Record<number, number>;
   agentActiveIds: Set<number>;
   agentChecklist: Record<number, Array<{ label: string; done: boolean }>>;
-  pendingPhaseReview: { project: string; phase: number; summaries: { agent: string; content: string }[] } | null;
+  pendingPhaseReview: {
+    project: string;
+    phase: number;
+    summaries: { agent: string; content: string }[];
+  } | null;
   clearPendingPhaseReview: () => void;
+  fleetState: FleetState | null;
+  lastError: string | null;
+  isMeetingActive: boolean;
+  meetingTopic: string;
+  agentCanSpawn: Record<number, { canSpawn: boolean; maxSpawn: number }>;
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -165,13 +213,23 @@ export function useExtensionMessages(
   const [agentModes, setAgentModes] = useState<Record<number, string>>({});
   const [agentHomeZones, setAgentHomeZones] = useState<Record<number, string>>({});
   const [agentRoles, setAgentRoles] = useState<Record<number, string>>({});
-  const [agentCanSpawn, setAgentCanSpawn] = useState<Record<number, { canSpawn: boolean; maxSpawn: number }>>({});
+  const [agentCanSpawn, setAgentCanSpawn] = useState<
+    Record<number, { canSpawn: boolean; maxSpawn: number }>
+  >({});
   const [ceoAgentIds, setCeoAgentIds] = useState<Set<number>>(new Set());
   const [pendingFileAttach, setPendingFileAttach] = useState<Record<number, string>>({});
-  const [agentChecklist, setAgentChecklist] = useState<Record<number, Array<{ label: string; done: boolean }>>>({});
-  const [pendingPhaseReview, setPendingPhaseReview] = useState<{ project: string; phase: number; summaries: { agent: string; content: string }[] } | null>(null);
+  const [agentChecklist, setAgentChecklist] = useState<
+    Record<number, Array<{ label: string; done: boolean }>>
+  >({});
+  const [pendingPhaseReview, setPendingPhaseReview] = useState<{
+    project: string;
+    phase: number;
+    summaries: { agent: string; content: string }[];
+  } | null>(null);
   const [isMeetingActive, setIsMeetingActive] = useState(false);
   const [meetingTopic, setMeetingTopic] = useState('');
+  const [fleetState, setFleetState] = useState<FleetState | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
   const toolStartTimesRef = useRef<
     Record<string, { time: number; toolName: string; statusText: string }>
   >({});
@@ -277,18 +335,66 @@ export function useExtensionMessages(
           delete next[id];
           return next;
         });
-        setAgentNames((prev) => { const n = { ...prev }; delete n[id]; return n; });
-        setAgentTasks((prev) => { const n = { ...prev }; delete n[id]; return n; });
-        setAgentFolderNames((prev) => { const n = { ...prev }; delete n[id]; return n; });
-        setAgentFolderPaths((prev) => { const n = { ...prev }; delete n[id]; return n; });
-        setAgentMessages((prev) => { const n = { ...prev }; delete n[id]; return n; });
-        setAgentLastMessageAt((prev) => { const n = { ...prev }; delete n[id]; return n; });
-        setAgentActiveIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
-        setAgentModes((prev) => { const n = { ...prev }; delete n[id]; return n; });
-        setAgentHomeZones((prev) => { const n = { ...prev }; delete n[id]; return n; });
-        setAgentRoles((prev) => { const n = { ...prev }; delete n[id]; return n; });
-        setCeoAgentIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
-        setAgentChecklist((prev) => { const n = { ...prev }; delete n[id]; return n; });
+        setAgentNames((prev) => {
+          const n = { ...prev };
+          delete n[id];
+          return n;
+        });
+        setAgentTasks((prev) => {
+          const n = { ...prev };
+          delete n[id];
+          return n;
+        });
+        setAgentFolderNames((prev) => {
+          const n = { ...prev };
+          delete n[id];
+          return n;
+        });
+        setAgentFolderPaths((prev) => {
+          const n = { ...prev };
+          delete n[id];
+          return n;
+        });
+        setAgentMessages((prev) => {
+          const n = { ...prev };
+          delete n[id];
+          return n;
+        });
+        setAgentLastMessageAt((prev) => {
+          const n = { ...prev };
+          delete n[id];
+          return n;
+        });
+        setAgentActiveIds((prev) => {
+          const s = new Set(prev);
+          s.delete(id);
+          return s;
+        });
+        setAgentModes((prev) => {
+          const n = { ...prev };
+          delete n[id];
+          return n;
+        });
+        setAgentHomeZones((prev) => {
+          const n = { ...prev };
+          delete n[id];
+          return n;
+        });
+        setAgentRoles((prev) => {
+          const n = { ...prev };
+          delete n[id];
+          return n;
+        });
+        setCeoAgentIds((prev) => {
+          const s = new Set(prev);
+          s.delete(id);
+          return s;
+        });
+        setAgentChecklist((prev) => {
+          const n = { ...prev };
+          delete n[id];
+          return n;
+        });
         os.removeAgent(id);
       } else if (msg.type === 'agentTextOutput') {
         const id = msg.id as number;
@@ -331,7 +437,11 @@ export function useExtensionMessages(
           if (msg.name) {
             setAgentNames((prev) => ({ ...prev, [id]: msg.name as string }));
           } else {
-            setAgentNames((prev) => { const n = { ...prev }; delete n[id]; return n; });
+            setAgentNames((prev) => {
+              const n = { ...prev };
+              delete n[id];
+              return n;
+            });
           }
           const ch = os.characters.get(id);
           if (ch) ch.customName = (msg.name as string) || undefined;
@@ -350,7 +460,8 @@ export function useExtensionMessages(
           const zoneId = msg.homeZoneId || undefined;
           setAgentHomeZones((prev) => {
             const next = { ...prev };
-            if (zoneId) next[id] = zoneId; else delete next[id];
+            if (zoneId) next[id] = zoneId;
+            else delete next[id];
             return next;
           });
           const ch = os.characters.get(id);
@@ -359,11 +470,20 @@ export function useExtensionMessages(
         if (typeof msg.role === 'string' && msg.role) {
           setAgentRoles((prev) => ({ ...prev, [id]: msg.role as string }));
         }
+        if (typeof msg.task === 'string' && msg.task) {
+          setAgentTasks((prev) => ({ ...prev, [id]: msg.task as string }));
+        }
         if (Array.isArray(msg.tasks)) {
-          setAgentChecklist((prev) => ({ ...prev, [id]: msg.tasks as Array<{ label: string; done: boolean }> }));
+          setAgentChecklist((prev) => ({
+            ...prev,
+            [id]: msg.tasks as Array<{ label: string; done: boolean }>,
+          }));
         }
         if (typeof msg.canSpawn === 'boolean') {
-          setAgentCanSpawn((prev) => ({ ...prev, [id]: { canSpawn: msg.canSpawn as boolean, maxSpawn: (msg.maxSpawn as number) ?? 3 } }));
+          setAgentCanSpawn((prev) => ({
+            ...prev,
+            [id]: { canSpawn: msg.canSpawn as boolean, maxSpawn: (msg.maxSpawn as number) ?? 3 },
+          }));
         }
       } else if (msg.type === 'existingAgents') {
         const incoming = msg.agents as number[];
@@ -388,13 +508,16 @@ export function useExtensionMessages(
         // to ~/.pixel-agents/agent-history.json and includes a snapshot in this payload so the Summary
         // tab survives backend restarts. Synthesized as a single AgentHistoryEntry per agent so the
         // existing Summary aggregation (which sums entries) sees correct cumulative totals.
-        const incomingTotals = (msg.agentHistoryTotals || {}) as Record<number, {
-          totalInputTokens: number;
-          totalOutputTokens: number;
-          totalDurationMs: number;
-          turnCount: number;
-          lastTurnAt: number;
-        }>;
+        const incomingTotals = (msg.agentHistoryTotals || {}) as Record<
+          number,
+          {
+            totalInputTokens: number;
+            totalOutputTokens: number;
+            totalDurationMs: number;
+            turnCount: number;
+            lastTurnAt: number;
+          }
+        >;
         if (Object.keys(incomingTotals).length > 0) {
           setAgentHistory((prev) => {
             const next = { ...prev };
@@ -402,21 +525,29 @@ export function useExtensionMessages(
               const id = Number(idStr);
               // Skip if this agent already has live history this session — live takes precedence.
               if (next[id] && next[id].length > 0) continue;
-              next[id] = [{
-                entryId: `restored-${id}-${t.lastTurnAt}`,
-                toolName: 'cumulative',
-                statusText: `${t.turnCount} turn(s) prior to backend restart`,
-                timestamp: t.lastTurnAt,
-                durationMs: t.totalDurationMs || undefined,
-                inputTokens: t.totalInputTokens || undefined,
-                outputTokens: t.totalOutputTokens || undefined,
-                type: 'waiting',
-              }];
+              next[id] = [
+                {
+                  entryId: `restored-${id}-${t.lastTurnAt}`,
+                  toolName: 'cumulative',
+                  statusText: `${t.turnCount} turn(s) prior to backend restart`,
+                  timestamp: t.lastTurnAt,
+                  durationMs: t.totalDurationMs || undefined,
+                  inputTokens: t.totalInputTokens || undefined,
+                  outputTokens: t.totalOutputTokens || undefined,
+                  type: 'waiting',
+                },
+              ];
             }
             return next;
           });
         }
-        setCeoAgentIds(new Set(Object.entries(incomingCeoFlags).filter(([, v]) => v).map(([k]) => Number(k))));
+        setCeoAgentIds(
+          new Set(
+            Object.entries(incomingCeoFlags)
+              .filter(([, v]) => v)
+              .map(([k]) => Number(k)),
+          ),
+        );
         setAgentRoles((prev) => ({ ...prev, ...incomingRoles }));
         // Restore agent activity status on reload so working agents don't appear idle
         if (Object.keys(incomingStatuses).length > 0) {
@@ -426,7 +557,11 @@ export function useExtensionMessages(
         setAgentCanSpawn((prev) => {
           const next = { ...prev };
           for (const [idStr, cs] of Object.entries(incomingCanSpawn)) {
-            if (cs) next[Number(idStr)] = { canSpawn: true, maxSpawn: incomingMaxSpawn[Number(idStr)] ?? 3 };
+            if (cs)
+              next[Number(idStr)] = {
+                canSpawn: true,
+                maxSpawn: incomingMaxSpawn[Number(idStr)] ?? 3,
+              };
           }
           return next;
         });
@@ -441,7 +576,8 @@ export function useExtensionMessages(
             if (ch) {
               if (incomingNames[id]) ch.customName = incomingNames[id];
               if (incomingTasks[id]) ch.task = incomingTasks[id];
-              if (incomingModes[id]) ch.mode = incomingModes[id] as 'default' | 'planner' | 'automation' | 'liberty';
+              if (incomingModes[id])
+                ch.mode = incomingModes[id] as 'default' | 'planner' | 'automation' | 'liberty';
               if (incomingHomeZones[id]) ch.homeZoneId = incomingHomeZones[id];
             }
           }
@@ -576,7 +712,8 @@ export function useExtensionMessages(
         setAgentStatuses((prev) => ({ ...prev, [id]: status }));
         setAgentActiveIds((prev) => {
           const s = new Set(prev);
-          if (status === 'active') s.add(id); else s.delete(id);
+          if (status === 'active') s.add(id);
+          else s.delete(id);
           return s;
         });
         os.setAgentActive(id, status === 'active');
@@ -770,13 +907,18 @@ export function useExtensionMessages(
         setPendingPhaseReview({
           project: (msg.project as string) ?? '',
           phase: typeof msg.phase === 'number' ? msg.phase : 1,
-          summaries: Array.isArray(msg.summaries) ? (msg.summaries as { agent: string; content: string }[]) : [],
+          summaries: Array.isArray(msg.summaries)
+            ? (msg.summaries as { agent: string; content: string }[])
+            : [],
         });
       } else if (msg.type === 'phaseUpdate') {
         // Pillar D1 — backend broadcasts this on phase init/done. Write localStorage
         // directly so the banner polling in App.tsx (every 2s) picks up the change without
         // depending on Scrum-Master remembering to write the keys itself.
-        if (typeof msg.currentPhase === 'number' || (typeof msg.currentPhase === 'string' && msg.currentPhase)) {
+        if (
+          typeof msg.currentPhase === 'number' ||
+          (typeof msg.currentPhase === 'string' && msg.currentPhase)
+        ) {
           localStorage.setItem('pixel-agents-current-phase', String(msg.currentPhase));
         }
         if (Array.isArray(msg.phaseNames)) {
@@ -786,12 +928,23 @@ export function useExtensionMessages(
           localStorage.setItem('pixel-agents-run-mode', msg.runMode);
         }
         if (msg.gatePending === true && msg.project && typeof msg.phase === 'number') {
-          localStorage.setItem('pixel-agents-phase-gate', JSON.stringify({
-            project: msg.project, phase: msg.phase, timestamp: Date.now(),
-          }));
+          localStorage.setItem(
+            'pixel-agents-phase-gate',
+            JSON.stringify({
+              project: msg.project,
+              phase: msg.phase,
+              timestamp: Date.now(),
+            }),
+          );
         } else if (msg.gatePending === false) {
           localStorage.removeItem('pixel-agents-phase-gate');
         }
+      } else if (msg.type === 'fleetState') {
+        setFleetState((msg.state as FleetState) ?? null);
+        setLastError(null);
+      } else if (msg.type === 'error') {
+        console.error('[Pixel Agents]', msg.message);
+        setLastError(String(msg.message ?? 'Unknown backend error'));
       }
     };
     window.addEventListener('message', handler);
@@ -835,7 +988,11 @@ export function useExtensionMessages(
     ceoAgentIds,
     pendingFileAttach,
     clearPendingFileAttach: (agentId: number) =>
-      setPendingFileAttach((prev) => { const n = { ...prev }; delete n[agentId]; return n; }),
+      setPendingFileAttach((prev) => {
+        const n = { ...prev };
+        delete n[agentId];
+        return n;
+      }),
     agentChecklist,
     pendingPhaseReview,
     clearPendingPhaseReview: () => setPendingPhaseReview(null),
@@ -844,5 +1001,7 @@ export function useExtensionMessages(
     newAgentFolderPath,
     agentLastMessageAt,
     agentActiveIds,
+    fleetState,
+    lastError,
   };
 }

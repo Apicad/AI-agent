@@ -9,6 +9,7 @@ import { PreviewPane } from './components/PreviewPane.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
+import { FleetPanel } from './components/FleetPanel.js';
 import { FurnitureLibraryPanel } from './components/FurnitureLibraryPanel.js';
 import { MeetingPanel } from './components/MeetingPanel.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
@@ -106,6 +107,8 @@ function App() {
     agentCanSpawn,
     pendingPhaseReview,
     clearPendingPhaseReview,
+    fleetState,
+    lastError,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   // Sent messages (user side of chat — tracked locally, not from hook)
@@ -970,6 +973,8 @@ function App() {
       )}
 
       <PreviewPane open={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} />
+
+      {fleetState && <FleetPanel state={fleetState} lastError={lastError} />}
 
       <PhaseReviewModal
         isOpen={isPhaseReviewOpen}

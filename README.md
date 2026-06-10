@@ -23,6 +23,13 @@ The upstream project ships as a VS Code extension. This fork adds:
 - **Obsidian-vault workflow** — a documented pattern for letting spawned agents use
   an Obsidian markdown vault as a shared, persistent knowledge layer. See
   [`docs/obsidian-vault.md`](docs/obsidian-vault.md).
+- **Vault fleet watcher + session mirroring** — with `PIXEL_AGENTS_VAULT_ROOT` set,
+  the backend watches `fleet/board.md`, `projects/*/PHASE.md`, and `fleet/*/inbox/`,
+  streams live fleet state (with board↔PHASE drift detection) into a Fleet panel,
+  spawns agents from pending briefs, and **adopts external Claude sessions running in
+  the vault as observed characters** — wire any project's Claude Code hooks through
+  [`app/scripts/claude-hook.mjs`](app/scripts/claude-hook.mjs) and its sessions appear
+  in the office live.
 
 Everything else — the office canvas, characters, layout editor, asset system — is the
 upstream project's work (see credit below).
