@@ -1,0 +1,24 @@
+{
+  "id": "OLD_CHAIR",
+  "name": "OLD CHAIR",
+  "category": "chairs",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "OLD_CHAIR_FRONT",
+      "file": "OLD_CHAIR_FRONT.png",
+      "width": 16,
+      "height": 32,
+      "footprintW": 1,
+      "footprintH": 2,
+      "orientation": "front"
+    }
+  ],
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "canSitOn": true
+}

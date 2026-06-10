@@ -1,0 +1,24 @@
+{
+  "id": "VASE4",
+  "name": "VASE4",
+  "category": "decor",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "VASE4_SIDE",
+      "file": "VASE4_SIDE.png",
+      "width": 16,
+      "height": 32,
+      "footprintW": 1,
+      "footprintH": 2,
+      "orientation": "side"
+    }
+  ],
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": true,
+  "backgroundTiles": 1,
+  "canSitOn": false
+}

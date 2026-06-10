@@ -1,0 +1,15 @@
+{
+  "type": "asset",
+  "id": "LOCKER",
+  "name": "Locker",
+  "category": "storage",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "file": "LOCKER_FRONT.png",
+  "width": 32,
+  "height": 32,
+  "footprintW": 2,
+  "footprintH": 2,
+  "backgroundTiles": 1,
+  "orientation": "front"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "WINDOW",
+  "name": "WINDOW",
+  "category": "misc",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "WINDOW_BACK",
+      "file": "WINDOW_BACK.png",
+      "width": 32,
+      "height": 32,
+      "footprintW": 2,
+      "footprintH": 2,
+      "orientation": "back"
+    }
+  ],
+  "canPlaceOnWalls": true,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1
+}

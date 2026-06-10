@@ -1,0 +1,14 @@
+{
+  "type": "asset",
+  "id": "NEON_SIGN",
+  "name": "Neon Sign",
+  "category": "wall",
+  "canPlaceOnWalls": true,
+  "canPlaceOnSurfaces": false,
+  "file": "NEON_SIGN_FRONT.png",
+  "width": 32,
+  "height": 16,
+  "footprintW": 2,
+  "footprintH": 1,
+  "orientation": "front"
+}

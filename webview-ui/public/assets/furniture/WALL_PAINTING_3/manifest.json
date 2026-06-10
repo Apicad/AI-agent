@@ -1,0 +1,14 @@
+{
+  "type": "asset",
+  "id": "WALL_PAINTING_3",
+  "name": "Abstract Painting",
+  "category": "wall",
+  "canPlaceOnWalls": true,
+  "canPlaceOnSurfaces": false,
+  "file": "WALL_PAINTING_3_FRONT.png",
+  "width": 16,
+  "height": 16,
+  "footprintW": 1,
+  "footprintH": 1,
+  "orientation": "front"
+}

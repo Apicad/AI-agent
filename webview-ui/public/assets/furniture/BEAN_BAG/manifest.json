@@ -1,0 +1,15 @@
+{
+  "type": "asset",
+  "id": "BEAN_BAG",
+  "name": "Bean Bag",
+  "category": "chairs",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "file": "BEAN_BAG_FRONT.png",
+  "width": 16,
+  "height": 16,
+  "footprintW": 1,
+  "footprintH": 1,
+  "orientation": "front",
+  "canSitOn": true
+}

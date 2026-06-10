@@ -1,0 +1,14 @@
+{
+  "type": "asset",
+  "id": "FLOOR_LAMP",
+  "name": "Floor Lamp",
+  "category": "decor",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "file": "FLOOR_LAMP_FRONT.png",
+  "width": 16,
+  "height": 32,
+  "footprintW": 1,
+  "footprintH": 2,
+  "orientation": "front"
+}

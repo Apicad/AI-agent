@@ -1,0 +1,23 @@
+{
+  "id": "FOOD_STORAGE",
+  "name": "FOOD STORAGE",
+  "category": "misc",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "FOOD_STORAGE_SIDE",
+      "file": "FOOD_STORAGE_SIDE.png",
+      "width": 31,
+      "height": 29,
+      "footprintW": 2,
+      "footprintH": 2,
+      "orientation": "side"
+    }
+  ],
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1
+}

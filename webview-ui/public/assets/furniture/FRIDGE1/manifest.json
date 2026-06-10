@@ -1,0 +1,23 @@
+{
+  "id": "FRIDGE1",
+  "name": "FRIDGE1",
+  "category": "misc",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "FRIDGE1_SIDE",
+      "file": "FRIDGE1_SIDE.png",
+      "width": 30,
+      "height": 32,
+      "footprintW": 2,
+      "footprintH": 2,
+      "orientation": "side"
+    }
+  ],
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1
+}

@@ -1,0 +1,23 @@
+{
+  "id": "WINDONW2",
+  "name": "WINDONW2",
+  "category": "misc",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "WINDONW2_SIDE",
+      "file": "WINDONW2_SIDE.png",
+      "width": 32,
+      "height": 32,
+      "footprintW": 2,
+      "footprintH": 2,
+      "orientation": "side"
+    }
+  ],
+  "canPlaceOnWalls": true,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1
+}

@@ -1,0 +1,15 @@
+{
+  "type": "asset",
+  "id": "STAMPING_TABLE",
+  "name": "STAMPING TABLE",
+  "category": "desks",
+  "file": "STAMPING_TABLE.png",
+  "width": 64,
+  "height": 32,
+  "footprintW": 4,
+  "footprintH": 2,
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "canSitOn": false
+}

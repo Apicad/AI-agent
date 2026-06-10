@@ -1,0 +1,15 @@
+{
+  "type": "asset",
+  "id": "FILING_CABINET",
+  "name": "Filing Cabinet",
+  "category": "storage",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "file": "FILING_CABINET_FRONT.png",
+  "width": 16,
+  "height": 32,
+  "footprintW": 1,
+  "footprintH": 2,
+  "backgroundTiles": 1,
+  "orientation": "front"
+}

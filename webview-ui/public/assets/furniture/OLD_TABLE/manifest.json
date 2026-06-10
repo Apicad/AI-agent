@@ -1,0 +1,24 @@
+{
+  "id": "OLD_TABLE",
+  "name": "OLD TABLE",
+  "category": "desks",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "OLD_TABLE_SIDE",
+      "file": "OLD_TABLE_SIDE.png",
+      "width": 32,
+      "height": 32,
+      "footprintW": 2,
+      "footprintH": 2,
+      "orientation": "side"
+    }
+  ],
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "canSitOn": false
+}

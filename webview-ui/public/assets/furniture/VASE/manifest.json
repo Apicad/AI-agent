@@ -1,0 +1,15 @@
+{
+  "id": "VASE",
+  "name": "VASE",
+  "category": "decor",
+  "type": "asset",
+  "file": "VASE.png",
+  "width": 16,
+  "height": 32,
+  "footprintW": 1,
+  "footprintH": 2,
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": true,
+  "backgroundTiles": 1,
+  "canSitOn": false
+}

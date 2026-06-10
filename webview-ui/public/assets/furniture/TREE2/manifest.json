@@ -1,0 +1,24 @@
+{
+  "id": "TREE2",
+  "name": "TREE2",
+  "category": "decor",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "TREE2_SIDE",
+      "file": "TREE2_SIDE.png",
+      "width": 18,
+      "height": 35,
+      "footprintW": 1,
+      "footprintH": 2,
+      "orientation": "side"
+    }
+  ],
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": true,
+  "backgroundTiles": 1,
+  "canSitOn": false
+}

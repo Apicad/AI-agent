@@ -1,0 +1,14 @@
+{
+  "id": "DESK_1",
+  "type": "asset",
+  "category": "misc",
+  "name": "DESK 1",
+  "file": "DESK_1_FRONT.png",
+  "width": 64,
+  "height": 32,
+  "footprintW": 4,
+  "footprintH": 2,
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1
+}

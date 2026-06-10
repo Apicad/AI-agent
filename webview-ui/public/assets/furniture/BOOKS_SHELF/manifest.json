@@ -1,0 +1,23 @@
+{
+  "id": "BOOKS_SHELF",
+  "name": "BOOKS SHELF",
+  "category": "misc",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "BOOKS_SHELF_SIDE",
+      "file": "BOOKS_SHELF_SIDE.png",
+      "width": 30,
+      "height": 36,
+      "footprintW": 2,
+      "footprintH": 2,
+      "orientation": "side"
+    }
+  ],
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1
+}

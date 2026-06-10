@@ -1,0 +1,34 @@
+{
+  "id": "ARCADE_CABINET",
+  "name": "Arcade Cabinet",
+  "category": "decor",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "members": [
+    {
+      "type": "asset",
+      "id": "ARCADE_CABINET_FRONT",
+      "file": "ARCADE_CABINET_FRONT.png",
+      "width": 16,
+      "height": 32,
+      "footprintW": 1,
+      "footprintH": 2,
+      "backgroundTiles": 1,
+      "orientation": "front"
+    },
+    {
+      "type": "asset",
+      "id": "ARCADE_CABINET_BACK",
+      "file": "ARCADE_CABINET_BACK.png",
+      "width": 16,
+      "height": 32,
+      "footprintW": 1,
+      "footprintH": 2,
+      "backgroundTiles": 1,
+      "orientation": "back"
+    }
+  ]
+}

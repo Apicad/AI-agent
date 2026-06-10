@@ -1,0 +1,14 @@
+{
+  "id": "ELEVATOR",
+  "name": "ELEVATOR",
+  "category": "misc",
+  "type": "asset",
+  "file": "ELEVATOR.png",
+  "width": 40,
+  "height": 26,
+  "footprintW": 3,
+  "footprintH": 2,
+  "canPlaceOnWalls": true,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1
+}

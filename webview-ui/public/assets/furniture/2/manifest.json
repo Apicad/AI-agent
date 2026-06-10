@@ -1,0 +1,24 @@
+{
+  "id": "2",
+  "name": "2",
+  "category": "misc",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "2_SIDE",
+      "file": "2_SIDE.png",
+      "width": 16,
+      "height": 18,
+      "footprintW": 1,
+      "footprintH": 1,
+      "orientation": "side"
+    }
+  ],
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "canSitOn": false
+}

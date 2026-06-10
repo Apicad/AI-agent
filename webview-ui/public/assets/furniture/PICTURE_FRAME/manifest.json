@@ -1,0 +1,24 @@
+{
+  "id": "PICTURE_FRAME",
+  "name": "PICTURE FRAME",
+  "category": "decor",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "PICTURE_FRAME_SIDE",
+      "file": "PICTURE_FRAME_SIDE.png",
+      "width": 16,
+      "height": 16,
+      "footprintW": 1,
+      "footprintH": 1,
+      "orientation": "side"
+    }
+  ],
+  "canPlaceOnWalls": true,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "canSitOn": false
+}

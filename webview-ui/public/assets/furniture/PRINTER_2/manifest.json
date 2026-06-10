@@ -1,0 +1,15 @@
+{
+  "id": "PRINTER_2",
+  "type": "asset",
+  "category": "electronics",
+  "name": "PRINTER 2",
+  "file": "PRINTER_2_FRONT.png",
+  "width": 64,
+  "height": 32,
+  "footprintW": 4,
+  "footprintH": 2,
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "canSitOn": false
+}

@@ -1,0 +1,23 @@
+{
+  "id": "COFFE_MAKER",
+  "name": "COFFE MAKER",
+  "category": "misc",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "members": [
+    {
+      "type": "asset",
+      "id": "COFFE_MAKER_FRONT",
+      "file": "COFFE_MAKER_FRONT.png",
+      "width": 62,
+      "height": 43,
+      "footprintW": 4,
+      "footprintH": 3,
+      "orientation": "front"
+    }
+  ],
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1
+}
