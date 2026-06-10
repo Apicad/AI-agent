@@ -82,8 +82,15 @@ export function appleScriptTypeInTerminal(
     `pixel-type-${Date.now()}-${Math.random().toString(36).slice(2)}.scpt`,
   );
   const lines: string[] = [];
-  if (message) lines.push(`    keystroke ${JSON.stringify(message)}`, '    delay 0.1');
-  if (pressReturn) lines.push('    keystroke return');
+  // After a fast keystroke burst, Claude Code's input is in paste-detection mode:
+  // a Return arriving too soon becomes a literal newline instead of a submit.
+  // Wait out the paste window, then send Return twice (the second is a no-op on
+  // an empty input but rescues the case where the first was still swallowed).
+  if (message) lines.push(`    keystroke ${JSON.stringify(message)}`, '    delay 0.8');
+  if (pressReturn) {
+    lines.push('    keystroke return');
+    if (message) lines.push('    delay 0.35', '    keystroke return');
+  }
   if (lines.length === 0) return;
 
   const appleScript = [
