@@ -55,7 +55,7 @@ export function FleetPanel({ state, lastError }: FleetPanelProps) {
         style={{
           position: 'absolute',
           top: 12,
-          right: 12,
+          left: 12,
           zIndex: 150,
           padding: '6px 10px',
           fontSize: 11,
@@ -82,7 +82,7 @@ export function FleetPanel({ state, lastError }: FleetPanelProps) {
           style={{
             position: 'absolute',
             top: 48,
-            right: 12,
+            left: 12,
             zIndex: 150,
             width: 420,
             maxHeight: '70vh',
