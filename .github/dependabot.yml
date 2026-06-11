@@ -1,5 +1,6 @@
 version: 2
 updates:
+  # Root workspace
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -11,7 +12,11 @@ updates:
         update-types:
           - minor
           - patch
+      major:
+        update-types:
+          - major
 
+  # Frontend
   - package-ecosystem: npm
     directory: /webview-ui
     schedule:
@@ -23,6 +28,25 @@ updates:
         update-types:
           - minor
           - patch
+      major:
+        update-types:
+          - major
+
+  # Standalone backend
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+      major:
+        update-types:
+          - major
 
   - package-ecosystem: github-actions
     directory: /
@@ -30,3 +54,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
