@@ -37,6 +37,9 @@ export interface StandaloneAgent {
   role?: 'ceo' | 'manager' | 'worker';
   homeZoneId?: string;
   ttyPath?: string;
+  /** tmux session name backing a terminal agent — input goes via `tmux send-keys`
+   *  (no focus-steal, no Accessibility, multi-line safe) instead of AppleScript. */
+  tmuxSession?: string;
   pendingMessages?: string[];
   tasks?: Array<{ label: string; done: boolean }>;
   headless?: boolean;

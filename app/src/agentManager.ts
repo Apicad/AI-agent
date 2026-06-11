@@ -66,10 +66,47 @@ function appleScriptStr(s: string): string {
   return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
 }
 
+// tmux is the preferred input transport for terminal agents: `send-keys` writes
+// straight to the pane's PTY, so it needs no window focus, no Accessibility grant,
+// and carries multi-line text intact — unlike the AppleScript keystroke fallback.
+const TMUX_BIN =
+  ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux'].find((p) => fs.existsSync(p)) ?? 'tmux';
+export const TMUX_AVAILABLE = TMUX_BIN !== 'tmux' || fs.existsSync('/usr/bin/tmux');
+
+/** ttyPath → tmux session, registered at launch so the 11 ttyPath-keyed call
+ *  sites route through tmux without changing their signatures. */
+const ttyToTmux = new Map<string, string>();
+
+export function tmuxSessionFor(agentId: number): string {
+  return `pixel-agent-${agentId}`;
+}
+
+/** Send input to a terminal agent's tmux pane. Text and Return are separate
+ *  send-keys calls; the Return waits out Claude's paste-burst detection (a
+ *  Return arriving mid-burst becomes a newline, not a submit), and a second
+ *  Return (no-op on empty input) rescues the rare miss. */
+export function tmuxSendKeys(
+  session: string,
+  message: string,
+  pressReturn = true,
+  preDelay = 0.3,
+): void {
+  const run = (args: string[]) =>
+    child_process.execFile(TMUX_BIN, args, (err) => {
+      if (err) console.error('[Pixel Agents] tmux send-keys error:', err.message);
+    });
+  if (message) run(['send-keys', '-t', session, '-l', message]);
+  if (!pressReturn) return;
+  const delayMs = Math.max(preDelay, 0.5) * 1000;
+  setTimeout(() => run(['send-keys', '-t', session, 'Enter']), delayMs);
+  setTimeout(() => run(['send-keys', '-t', session, 'Enter']), delayMs + 450);
+}
+
 /**
- * The ONLY reliable way to send input to a terminal Claude session on macOS.
+ * Send input to a terminal Claude session on macOS. Routes through tmux when the
+ * agent runs in a tmux pane (registered in ttyToTmux); otherwise falls back to
+ * AppleScript keystrokes (the legacy path — needs window focus + Accessibility).
  * printf/echo > ttyPath only affects display — Claude never sees it.
- * AppleScript keystroke goes through Terminal's PTY master = real keyboard input.
  */
 export function appleScriptTypeInTerminal(
   ttyPath: string,
@@ -77,6 +114,11 @@ export function appleScriptTypeInTerminal(
   pressReturn = true,
   preDelay = 0.3,
 ): void {
+  const tmuxSession = ttyToTmux.get(ttyPath);
+  if (tmuxSession) {
+    tmuxSendKeys(tmuxSession, message, pressReturn, preDelay);
+    return;
+  }
   const scptFile = path.join(
     os.tmpdir(),
     `pixel-type-${Date.now()}-${Math.random().toString(36).slice(2)}.scpt`,
@@ -269,60 +311,78 @@ export class AgentManager {
       agent.headless = true;
       if (headlessModel) agent.headlessModel = headlessModel;
     } else {
-      // Terminal mode: open a new macOS Terminal tab via AppleScript
+      // Terminal mode: run claude inside a tmux session (so the backend can
+      // inject input via `tmux send-keys` — no focus-steal, no Accessibility),
+      // then open a macOS Terminal tab that simply attaches to it for the user.
       const claudeFlags = bypassPermissions
         ? '--dangerously-skip-permissions --permission-mode acceptEdits'
         : '--permission-mode acceptEdits';
-      // Export PATH so the shell can find the claude binary even if ~/.local/bin isn't in the default PATH
-      const cmd =
-        `export PATH="${LOCAL_BIN}:$PATH" && cd ${JSON.stringify(folderPath)} && ${CLAUDE_BIN} --session-id ${sessionId} ${claudeFlags} ${ADD_DIR_SHELL}`.trim();
+      const tmuxSession = tmuxSessionFor(agentId);
+      // exec replaces the pane shell with claude, so the tmux session ends when
+      // claude exits (the SessionEnd hook still fires and drives CEO relaunch).
+      const claudeCmd =
+        `export PATH="${LOCAL_BIN}:${path.dirname(TMUX_BIN)}:$PATH" && cd ${JSON.stringify(folderPath)} && exec ${CLAUDE_BIN} --session-id ${sessionId} ${claudeFlags} ${ADD_DIR_SHELL}`.trim();
 
-      const appleScript = [
-        'tell application "Terminal"',
-        `  set t to (do script ${appleScriptStr(cmd)})`,
-        `  set custom title of t to "pixel-agent-${agentId}"`,
-        '  delay 0.5',
-        '  return tty of t',
-        'end tell',
-      ].join('\n');
-
-      const tmpFile = path.join(os.tmpdir(), `pixel-agent-launch-${agentId}.scpt`);
-      fs.writeFileSync(tmpFile, appleScript);
-
-      child_process.exec(`osascript "${tmpFile}"`, (err, stdout) => {
-        fs.unlink(tmpFile, () => {});
-        if (err) {
-          console.error(`[Pixel Agents] Failed to launch Terminal:`, err);
-          return;
-        }
-        const ttyPath = stdout.trim();
-        const a = this.agents.get(agentId);
-        if (a && ttyPath) {
-          a.ttyPath = ttyPath;
-          console.log(`[Pixel Agents] Agent ${agentId} TTY: ${ttyPath}`);
-          // Drain any messages queued before the TTY was ready
-          if (a.pendingMessages?.length) {
-            setTimeout(() => {
-              const queued = a.pendingMessages ?? [];
-              a.pendingMessages = [];
-              // First queued message gets extra delay so Claude Code finishes init
-              queued.forEach((m, i) =>
-                setTimeout(
-                  () => appleScriptTypeInTerminal(ttyPath, m, true, i === 0 ? 3.0 : 0.3),
-                  i * 500,
-                ),
-              );
-            }, 800);
-          }
-          if (!bypassPermissions) {
-            // Auto-approve workspace trust prompt (presses Enter ~12s after boot).
-            // If already trusted the Enter is harmless; if prompt shows it confirms it.
-            setTimeout(() => {
-              const b = this.agents.get(agentId);
-              if (b?.ttyPath) appleScriptTypeInTerminal(b.ttyPath, '', true);
-            }, 12000);
-          }
-        }
+      // Fresh session each launch (ids reset on resetAgentCounter → kill any stale one first).
+      child_process.execFile(TMUX_BIN, ['kill-session', '-t', tmuxSession], () => {
+        child_process.execFile(
+          TMUX_BIN,
+          ['new-session', '-d', '-s', tmuxSession, claudeCmd],
+          (newErr) => {
+            if (newErr) {
+              console.error(`[Pixel Agents] tmux new-session failed:`, newErr.message);
+              return;
+            }
+            const attachCmd = `${TMUX_BIN} attach -t ${tmuxSession}`;
+            const appleScript = [
+              'tell application "Terminal"',
+              `  set t to (do script ${appleScriptStr(attachCmd)})`,
+              `  set custom title of t to "pixel-agent-${agentId}"`,
+              '  delay 0.5',
+              '  return tty of t',
+              'end tell',
+            ].join('\n');
+            const tmpFile = path.join(os.tmpdir(), `pixel-agent-launch-${agentId}.scpt`);
+            fs.writeFileSync(tmpFile, appleScript);
+            child_process.exec(`osascript "${tmpFile}"`, (err, stdout) => {
+              fs.unlink(tmpFile, () => {});
+              if (err) {
+                console.error(`[Pixel Agents] Failed to open Terminal tab:`, err);
+                return;
+              }
+              const ttyPath = stdout.trim();
+              const a = this.agents.get(agentId);
+              if (a && ttyPath) {
+                a.ttyPath = ttyPath;
+                a.tmuxSession = tmuxSession;
+                ttyToTmux.set(ttyPath, tmuxSession);
+                console.log(`[Pixel Agents] Agent ${agentId} tmux=${tmuxSession} TTY: ${ttyPath}`);
+                // Drain any messages queued before the TTY was ready
+                if (a.pendingMessages?.length) {
+                  setTimeout(() => {
+                    const queued = a.pendingMessages ?? [];
+                    a.pendingMessages = [];
+                    // First queued message gets extra delay so Claude Code finishes init
+                    queued.forEach((m, i) =>
+                      setTimeout(
+                        () => appleScriptTypeInTerminal(ttyPath, m, true, i === 0 ? 3.0 : 0.3),
+                        i * 500,
+                      ),
+                    );
+                  }, 800);
+                }
+                if (!bypassPermissions) {
+                  // Auto-approve workspace trust prompt (presses Enter ~12s after boot).
+                  // If already trusted the Enter is harmless; if prompt shows it confirms it.
+                  setTimeout(() => {
+                    const b = this.agents.get(agentId);
+                    if (b?.ttyPath) appleScriptTypeInTerminal(b.ttyPath, '', true);
+                  }, 12000);
+                }
+              }
+            });
+          },
+        );
       });
     }
 
@@ -583,6 +643,13 @@ export class AgentManager {
       try {
         agent.childProcess.kill();
       } catch {}
+    }
+
+    // Terminal agents run claude inside a tmux session — kill it (this stops
+    // claude even when fromHook means the tab is already gone) and drop the map.
+    if (agent.tmuxSession) {
+      child_process.execFile(TMUX_BIN, ['kill-session', '-t', agent.tmuxSession], () => {});
+      if (agent.ttyPath) ttyToTmux.delete(agent.ttyPath);
     }
 
     // For terminal-mode agents closed from the UI (not from a hook), kill the claude
