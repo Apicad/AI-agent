@@ -5,6 +5,7 @@
     "lib": ["ES2023"],
     "module": "ESNext",
     "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "pngjs": ["./node_modules/@types/pngjs/index.d.ts"]
     },
