@@ -5,6 +5,7 @@
  * Commands:
  *   status                                   list live agents (+role/parent from saved roster)
  *   send  --name <agent>|--id <N> --message "…" [--wait] [--timeout <sec>]
+ *   mode  --name <agent>|--id <N> [--mode default|planner] [--effort none|low|medium|high|max]
  *   close --name <agent>|--id <N>
  *   spawn --name <agent> [--vault <path>]    respawn one roster agent (headless, identity + parent)
  *
@@ -135,6 +136,25 @@ switch (cmd) {
     sendMsg(ws, { type: 'closeAgent', id: target.id });
     await sleep(500);
     console.log(`closed ${target.name} #${target.id}`);
+    break;
+  }
+
+  case 'mode': {
+    // Set reasoning mode/effort on a live agent. mode: default|planner ·
+    // effort: none|low|medium|high|max (applied on the agent's next turn).
+    const target = await resolveAgent();
+    if (!args.mode && !args.effort) {
+      console.error('pass --mode <default|planner> and/or --effort <none|low|medium|high|max>');
+      process.exit(1);
+    }
+    const meta = { type: 'setAgentMeta', id: target.id };
+    if (args.mode) meta.mode = String(args.mode);
+    if (args.effort) meta.effort = String(args.effort);
+    sendMsg(ws, meta);
+    await sleep(300);
+    console.log(
+      `${target.name} #${target.id}: mode=${args.mode ?? '(unchanged)'} effort=${args.effort ?? '(unchanged)'}`,
+    );
     break;
   }
 

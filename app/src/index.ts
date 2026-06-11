@@ -1194,6 +1194,17 @@ async function handleClientMessage(
         }
         broadcast({ type: 'agentMetaUpdated', id, mode: newMode });
       }
+      if (typeof msg.effort === 'string') {
+        const newEffort = msg.effort as AgentEffort;
+        agent.effort = newEffort === 'none' ? undefined : newEffort;
+        // Headless agents pick this up on their next message (buildInstruction);
+        // a live terminal agent gets the guidance injected immediately.
+        if (newEffort !== 'none' && agent.ttyPath) {
+          const instruction = buildInstruction(agent.mode, newEffort);
+          if (instruction) appleScriptTypeInTerminal(agent.ttyPath, instruction);
+        }
+        broadcast({ type: 'agentMetaUpdated', id, effort: newEffort });
+      }
       if (typeof msg.homeZoneId === 'string') {
         agent.homeZoneId = msg.homeZoneId || undefined;
         broadcast({ type: 'agentMetaUpdated', id, homeZoneId: agent.homeZoneId ?? '' });

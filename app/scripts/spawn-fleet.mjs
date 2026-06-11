@@ -108,6 +108,7 @@ for (const a of roster.agents) {
     name: a.name,
     role: a.role,
     ...(parentId !== undefined ? { homeZoneId: String(parentId) } : {}),
+    ...(a.mode ? { mode: a.mode } : {}),
   });
   sendMsg(ws, {
     type: 'setAgentSystemPrompt',
