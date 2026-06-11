@@ -159,12 +159,24 @@ function App() {
     const check = () => {
       const p = localStorage.getItem('pixel-agents-current-phase') ?? '';
       const g = localStorage.getItem('pixel-agents-phase-gate');
-      const names = (() => { try { return JSON.parse(localStorage.getItem('pixel-agents-phase-names') ?? '[]') as string[]; } catch { return []; } })();
-      const mode = localStorage.getItem('pixel-agents-run-mode') ?? '';
-      const pending = !!g && (() => {
-        try { const d = JSON.parse(g) as { timestamp: number }; return (Date.now() - d.timestamp) < 7_200_000; }
-        catch { return false; }
+      const names = (() => {
+        try {
+          return JSON.parse(localStorage.getItem('pixel-agents-phase-names') ?? '[]') as string[];
+        } catch {
+          return [];
+        }
       })();
+      const mode = localStorage.getItem('pixel-agents-run-mode') ?? '';
+      const pending =
+        !!g &&
+        (() => {
+          try {
+            const d = JSON.parse(g) as { timestamp: number };
+            return Date.now() - d.timestamp < 7_200_000;
+          } catch {
+            return false;
+          }
+        })();
       setCurrentPhaseLocal(p);
       setPhaseGatePending(pending);
       setPhaseNames(names);
@@ -272,7 +284,16 @@ function App() {
   }, []);
 
   const handleSetAgentMeta = useCallback(
-    (id: number, updates: { name?: string; task?: string; folderPath?: string; mode?: string; homeZoneId?: string }) => {
+    (
+      id: number,
+      updates: {
+        name?: string;
+        task?: string;
+        folderPath?: string;
+        mode?: string;
+        homeZoneId?: string;
+      },
+    ) => {
       vscode.postMessage({ type: 'setAgentMeta', id, ...updates });
       // Optimistic update in OfficeState so ToolOverlay reflects change immediately
       const ch = getOfficeState().characters.get(id);
@@ -293,9 +314,10 @@ function App() {
     if (newIds.length > 0) {
       for (const id of newIds) {
         // Queue takes priority (roster spawns); fall back to single-ref (normal spawns)
-        const config = pendingAgentConfigQueue.current.length > 0
-          ? pendingAgentConfigQueue.current.shift()!
-          : pendingAgentConfigRef.current;
+        const config =
+          pendingAgentConfigQueue.current.length > 0
+            ? pendingAgentConfigQueue.current.shift()!
+            : pendingAgentConfigRef.current;
         if (config === pendingAgentConfigRef.current) pendingAgentConfigRef.current = null;
         if (!config) continue;
         const updates: { name?: string; task?: string; mode?: string } = {};
@@ -323,12 +345,31 @@ function App() {
       headless: config.headless,
       isCeo: config.isCeo,
     });
-    pendingAgentConfigRef.current = { name: config.name, task: config.task, mode: config.plan ? 'planner' : 'default' };
+    pendingAgentConfigRef.current = {
+      name: config.name,
+      task: config.task,
+      mode: config.plan ? 'planner' : 'default',
+    };
   }, []);
 
   const handleReloadRoster = useCallback(() => {
     const listener = (event: MessageEvent) => {
-      const msg = event.data as { type?: string; roster?: { agents: Array<{ name: string; task: string; role: string; plan: boolean; effort: string; isCeo: boolean; bypassPermissions: boolean; headless: boolean; folderPath: string }> } };
+      const msg = event.data as {
+        type?: string;
+        roster?: {
+          agents: Array<{
+            name: string;
+            task: string;
+            role: string;
+            plan: boolean;
+            effort: string;
+            isCeo: boolean;
+            bypassPermissions: boolean;
+            headless: boolean;
+            folderPath: string;
+          }>;
+        };
+      };
       if (msg?.type !== 'agentRosterLoaded') return;
       window.removeEventListener('message', listener);
       const rosterAgents = msg.roster?.agents ?? [];
@@ -445,9 +486,7 @@ function App() {
           )}
 
           {editor.pendingRoomStamp && (
-            <div
-              className="absolute left-1/2 -translate-x-1/2 z-20 bg-accent text-white text-sm py-4 px-12 pointer-events-none whitespace-nowrap border-2 border-accent-bright shadow-pixel"
-            >
+            <div className="absolute left-1/2 -translate-x-1/2 z-20 bg-accent text-white text-sm py-4 px-12 pointer-events-none whitespace-nowrap border-2 border-accent-bright shadow-pixel">
               Click to place room · Escape to cancel
             </div>
           )}
@@ -461,7 +500,8 @@ function App() {
             </div>
           )}
 
-          {editor.isEditMode && (() => {
+          {editor.isEditMode &&
+            (() => {
               const selUid = editorState.selectedFurnitureUid;
               const selColor = selUid
                 ? (officeState.getLayout().furniture.find((f) => f.uid === selUid)?.color ?? null)
@@ -544,6 +584,7 @@ function App() {
 
           {isSidebarOpen && (
             <ActivitySidebar
+              fleetState={fleetState}
               agents={agents}
               agentTools={agentTools}
               agentStatuses={agentStatuses}
@@ -576,7 +617,11 @@ function App() {
                   headless: false,
                 });
                 if (name || task) {
-                  pendingAgentConfigRef.current = { name: name ?? 'CEO', task: task ?? '', mode: 'default' };
+                  pendingAgentConfigRef.current = {
+                    name: name ?? 'CEO',
+                    task: task ?? '',
+                    mode: 'default',
+                  };
                 }
               }}
               pendingFileAttach={pendingFileAttach}
@@ -600,119 +645,160 @@ function App() {
           )}
 
           {/* ── Phase pipeline banner ── pixel-panel blocky style, matches BottomToolbar ── */}
-          {phaseNames.length > 0 && currentPhaseLocal && (() => {
-            const activeNum = parseInt(currentPhaseLocal, 10) || 0;
-            return (
-              <div
-                className="pixel-panel no-scrollbar"
-                style={{
-                  position: 'fixed', top: 14, left: '50%', transform: 'translateX(-50%)',
-                  zIndex: 100,
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '12px 18px',
-                  fontFamily: 'FS Pixel Sans, monospace',
-                  maxWidth: 'calc(100vw - 32px)',
-                  overflowX: 'auto',
-                  flexWrap: 'nowrap',
-                }}
-              >
-                {phaseNames.map((name, i) => {
-                  const phaseNum = i + 1;
-                  const isCompleted = phaseNum < activeNum;
-                  const isActive = phaseNum === activeNum;
-                  const isPending = phaseGatePending && isActive;
-                  const stepLabel = String(phaseNum).padStart(2, '0');
-                  return (
-                    <div
-                      key={i}
+          {phaseNames.length > 0 &&
+            currentPhaseLocal &&
+            (() => {
+              const activeNum = parseInt(currentPhaseLocal, 10) || 0;
+              return (
+                <div
+                  className="pixel-panel no-scrollbar"
+                  style={{
+                    position: 'fixed',
+                    top: 14,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 100,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '12px 18px',
+                    fontFamily: 'FS Pixel Sans, monospace',
+                    maxWidth: 'calc(100vw - 32px)',
+                    overflowX: 'auto',
+                    flexWrap: 'nowrap',
+                  }}
+                >
+                  {phaseNames.map((name, i) => {
+                    const phaseNum = i + 1;
+                    const isCompleted = phaseNum < activeNum;
+                    const isActive = phaseNum === activeNum;
+                    const isPending = phaseGatePending && isActive;
+                    const stepLabel = String(phaseNum).padStart(2, '0');
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          position: 'relative',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 14px',
+                          background: isActive
+                            ? 'rgba(249,115,22,0.18)'
+                            : isCompleted
+                              ? 'rgba(34,197,94,0.10)'
+                              : 'rgba(255,255,255,0.04)',
+                          border: `2px solid ${
+                            isActive
+                              ? '#f97316'
+                              : isCompleted
+                                ? 'rgba(34,197,94,0.45)'
+                                : 'rgba(255,255,255,0.12)'
+                          }`,
+                          color: isActive
+                            ? '#fff'
+                            : isCompleted
+                              ? 'rgba(255,255,255,0.85)'
+                              : 'rgba(255,255,255,0.55)',
+                          animation: isPending
+                            ? 'phase-active-glow 1.4s ease-in-out infinite'
+                            : isActive
+                              ? 'phase-active-glow 2.6s ease-in-out infinite'
+                              : 'none',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {/* Numbered square (matches blocky aesthetic — no border-radius) */}
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 28,
+                            height: 28,
+                            fontSize: 12,
+                            fontWeight: 'bold',
+                            letterSpacing: '0.5px',
+                            background: isCompleted
+                              ? '#22c55e'
+                              : isActive
+                                ? '#f97316'
+                                : 'rgba(255,255,255,0.08)',
+                            color: isCompleted || isActive ? '#0a1628' : 'rgba(255,255,255,0.4)',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {isCompleted ? '✓' : stepLabel}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 16,
+                            fontWeight: isActive ? 'bold' : 600,
+                            letterSpacing: '0.02em',
+                          }}
+                        >
+                          {name}
+                        </span>
+                        {isPending && (
+                          <span
+                            style={{
+                              position: 'absolute',
+                              top: -6,
+                              right: -6,
+                              width: 12,
+                              height: 12,
+                              background: '#f59e0b',
+                              border: '2px solid #0e0e18',
+                              animation: 'phase-gate-dot 1.0s ease-in-out infinite',
+                            }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Run mode + gate indicator — also blocky */}
+                  {runMode && (
+                    <span
                       style={{
-                        position: 'relative',
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '8px 14px',
-                        background: isActive
-                          ? 'rgba(249,115,22,0.18)'
-                          : isCompleted
-                          ? 'rgba(34,197,94,0.10)'
-                          : 'rgba(255,255,255,0.04)',
-                        border: `2px solid ${
-                          isActive ? '#f97316' : isCompleted ? 'rgba(34,197,94,0.45)' : 'rgba(255,255,255,0.12)'
-                        }`,
-                        color: isActive ? '#fff' : isCompleted ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.55)',
-                        animation: isPending
-                          ? 'phase-active-glow 1.4s ease-in-out infinite'
-                          : isActive
-                          ? 'phase-active-glow 2.6s ease-in-out infinite'
-                          : 'none',
+                        fontSize: 13,
+                        fontWeight: 'bold',
+                        color: '#4dd9ff',
+                        background: 'rgba(77,217,255,0.10)',
+                        border: '2px solid rgba(77,217,255,0.45)',
+                        padding: '7px 12px',
+                        letterSpacing: '0.06em',
                         whiteSpace: 'nowrap',
                         flexShrink: 0,
                       }}
                     >
-                      {/* Numbered square (matches blocky aesthetic — no border-radius) */}
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        width: 28, height: 28,
-                        fontSize: 12, fontWeight: 'bold', letterSpacing: '0.5px',
-                        background: isCompleted
-                          ? '#22c55e'
-                          : isActive
-                          ? '#f97316'
-                          : 'rgba(255,255,255,0.08)',
-                        color: isCompleted || isActive ? '#0a1628' : 'rgba(255,255,255,0.4)',
+                      @{runMode}
+                    </span>
+                  )}
+                  {phaseGatePending && (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 13,
+                        fontWeight: 'bold',
+                        color: '#0a1628',
+                        background: '#f59e0b',
+                        border: '2px solid #f59e0b',
+                        padding: '7px 12px',
+                        animation: 'phase-gate-dot 1.4s ease-in-out infinite',
+                        whiteSpace: 'nowrap',
                         flexShrink: 0,
-                      }}>
-                        {isCompleted ? '✓' : stepLabel}
-                      </span>
-                      <span style={{
-                        fontSize: 16,
-                        fontWeight: isActive ? 'bold' : 600,
-                        letterSpacing: '0.02em',
-                      }}>
-                        {name}
-                      </span>
-                      {isPending && (
-                        <span style={{
-                          position: 'absolute', top: -6, right: -6,
-                          width: 12, height: 12, background: '#f59e0b',
-                          border: '2px solid #0e0e18',
-                          animation: 'phase-gate-dot 1.0s ease-in-out infinite',
-                        }} />
-                      )}
-                    </div>
-                  );
-                })}
-
-                {/* Run mode + gate indicator — also blocky */}
-                {runMode && (
-                  <span style={{
-                    fontSize: 13, fontWeight: 'bold',
-                    color: '#4dd9ff',
-                    background: 'rgba(77,217,255,0.10)',
-                    border: '2px solid rgba(77,217,255,0.45)',
-                    padding: '7px 12px', letterSpacing: '0.06em',
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                  }}>
-                    @{runMode}
-                  </span>
-                )}
-                {phaseGatePending && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    fontSize: 13, fontWeight: 'bold',
-                    color: '#0a1628',
-                    background: '#f59e0b',
-                    border: '2px solid #f59e0b',
-                    padding: '7px 12px',
-                    animation: 'phase-gate-dot 1.4s ease-in-out infinite',
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                  }}>
-                    ⏳ GATE
-                  </span>
-                )}
-              </div>
-            );
-          })()}
+                      }}
+                    >
+                      ⏳ GATE
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
         </>
       ) : (
         <DebugView
@@ -804,7 +890,10 @@ function App() {
         onPhaseReview={() => setIsPhaseReviewOpen(true)}
         hasPhaseReview={!!pendingPhaseReview || phaseGatePending}
         onSpawnTeam={() => {
-          const project = window.prompt('Project name? (leave empty for default 11-agent roster)\n\nKnown projects: default, autoflow, AdobeHealthDashboardStage', 'default');
+          const project = window.prompt(
+            'Project name? (leave empty for default 11-agent roster)\n\nKnown projects: default, autoflow, AdobeHealthDashboardStage',
+            'default',
+          );
           if (project === null) return; // user cancelled
           vscode.postMessage({ type: 'spawnTeam', project: project.trim() || 'default' });
         }}
@@ -813,6 +902,7 @@ function App() {
       {isSimulationMode && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 210, display: 'flex' }}>
           <ActivitySidebar
+            fleetState={fleetState}
             agents={agents}
             agentTools={agentTools}
             agentStatuses={agentStatuses}
@@ -846,7 +936,11 @@ function App() {
                 headless: false,
               });
               if (name || task) {
-                pendingAgentConfigRef.current = { name: name ?? 'CEO', task: task ?? '', mode: 'default' };
+                pendingAgentConfigRef.current = {
+                  name: name ?? 'CEO',
+                  task: task ?? '',
+                  mode: 'default',
+                };
               }
             }}
             pendingFileAttach={pendingFileAttach}
@@ -891,12 +985,20 @@ function App() {
                   isCeo: cfg.isCeo,
                 });
                 if (cfg.name || cfg.task) {
-                  pendingAgentConfigRef.current = { name: cfg.name, task: cfg.task, mode: cfg.plan ? 'planner' : 'default' };
+                  pendingAgentConfigRef.current = {
+                    name: cfg.name,
+                    task: cfg.task,
+                    mode: cfg.plan ? 'planner' : 'default',
+                  };
                 }
               }}
               onCloseAgent={(id) => vscode.postMessage({ type: 'closeAgent', id })}
-              onSendMessage={(id, message) => vscode.postMessage({ type: 'sendAgentMessage', id, message })}
-              onSetMeta={(id, updates) => vscode.postMessage({ type: 'setAgentMeta', id, ...updates })}
+              onSendMessage={(id, message) =>
+                vscode.postMessage({ type: 'sendAgentMessage', id, message })
+              }
+              onSetMeta={(id, updates) =>
+                vscode.postMessage({ type: 'setAgentMeta', id, ...updates })
+              }
             />
           </div>
         </div>

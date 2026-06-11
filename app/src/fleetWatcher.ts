@@ -45,6 +45,8 @@ export interface FleetProject {
   gate: string | null;
   gateLog: string[];
   plans: FleetPhasePlan[];
+  /** Project start, epoch ms — brief.md mtime (fallback PHASE.md). Drives the runtime clock. */
+  started: number | null;
 }
 
 export interface FleetHandoff {
@@ -112,7 +114,10 @@ export function parseBoard(md: string): {
   updated: string | null;
   activeProjects: string[];
   idleRoster: string[];
-  projects: Map<string, Omit<FleetProject, 'phase' | 'phaseName' | 'gate' | 'gateLog' | 'plans'>>;
+  projects: Map<
+    string,
+    Omit<FleetProject, 'phase' | 'phaseName' | 'gate' | 'gateLog' | 'plans' | 'started'>
+  >;
 } {
   const updated = md.match(/^Updated:\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/m)?.[1] ?? null;
   const activeMatch = md.match(/Active projects:\s*(.+)$/m)?.[1] ?? '';
@@ -140,7 +145,7 @@ export function parseBoard(md: string): {
   // Project sections: ## <slug> (Phase N — gate: <state>)
   const projects = new Map<
     string,
-    Omit<FleetProject, 'phase' | 'phaseName' | 'gate' | 'gateLog' | 'plans'>
+    Omit<FleetProject, 'phase' | 'phaseName' | 'gate' | 'gateLog' | 'plans' | 'started'>
   >();
   const sectionRe = new RegExp(
     `^## ([\\w-]+) \\(Phase (\\d+) ${DASH}\\s*gate:\\s*([\\w-]+)\\)\\s*$`,
@@ -265,6 +270,15 @@ export function buildFleetState(vaultRoot: string): FleetState {
     }
     if (boardSection && !phaseMd)
       drift.push(`${slug}: on board but projects/${slug}/PHASE.md missing`);
+    let started: number | null = null;
+    for (const f of ['brief.md', 'PHASE.md']) {
+      try {
+        started = Math.round(fs.statSync(path.join(vaultRoot, 'projects', slug, f)).birthtimeMs);
+        if (started) break;
+      } catch {
+        /* try next */
+      }
+    }
     projects.push({
       slug,
       boardPhase: boardSection?.boardPhase ?? null,
@@ -272,6 +286,7 @@ export function buildFleetState(vaultRoot: string): FleetState {
       rows: boardSection?.rows ?? [],
       blockers: boardSection?.blockers ?? null,
       nextGate: boardSection?.nextGate ?? null,
+      started,
       ...phaseInfo,
     });
   }

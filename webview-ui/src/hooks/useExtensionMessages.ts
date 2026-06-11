@@ -100,6 +100,7 @@ export interface FleetProject {
   gate: string | null;
   gateLog: string[];
   plans: FleetPhasePlan[];
+  started: number | null;
 }
 
 export interface FleetState {
