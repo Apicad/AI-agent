@@ -109,6 +109,7 @@ for (const a of roster.agents) {
     role: a.role,
     ...(parentId !== undefined ? { homeZoneId: String(parentId) } : {}),
     ...(a.mode ? { mode: a.mode } : {}),
+    ...(a.canSpawn ? { canSpawn: true, maxSpawn: a.maxSpawn ?? 3 } : {}),
   });
   sendMsg(ws, {
     type: 'setAgentSystemPrompt',
