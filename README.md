@@ -37,21 +37,26 @@ upstream project's work (see credit below).
 ## Quick start
 
 ```sh
-# requires Node 22 and the Claude Code CLI
-cd webview-ui && npm run dev
+# install dependencies (root + the two workspaces)
+npm install
+npm install --prefix app
+npm install --prefix webview-ui
+
+# start the UI and the backend together
+npm run dev
 ```
 
-| URL | Role |
-|---|---|
-| http://localhost:5173 | UI — the pixel-art canvas |
-| :4000 | Backend — WebSocket + HTTP API |
-| :4001 | Claude Code hook receiver |
+`npm run dev` runs **both** the Vite UI and the Node backend (do not run
+`cd webview-ui && npm run dev` — that starts only the frontend, so no agents spawn).
+
+| URL                   | Role                                                                 |
+| --------------------- | -------------------------------------------------------------------- |
+| http://localhost:5173 | UI — the pixel-art canvas                                            |
+| :4000                 | Backend — WebSocket control bus (localhost-only, token/Origin gated) |
+| :4001                 | Claude Code hook receiver                                            |
 
 Open http://localhost:5173 and click **+ Agent** to spawn a Claude Code terminal and
 its character.
-
-> To run it the upstream way (VS Code extension via **F5**), see
-> [`CLAUDE.md`](CLAUDE.md).
 
 ## How it works
 
@@ -70,9 +75,13 @@ reproducible pattern (kept generic, no private content) is in
 
 ## Requirements
 
+- **macOS** — terminal agents are spawned via AppleScript + `tmux`, so the CEO/terminal-mode
+  flow is macOS-only. Headless agents work cross-platform; the canvas runs anywhere.
 - Node **22** (`.nvmrc`)
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and configured
-- macOS / Linux / Windows
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and logged in
+- **tmux** (`brew install tmux`) — terminal agents run `claude` inside a tmux session so the
+  backend can drive input reliably (no window-focus stealing, no Accessibility grant needed)
+- On first terminal-agent spawn, macOS prompts for **Automation/Accessibility** for Terminal — grant it.
 
 ## Credits & license
 

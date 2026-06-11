@@ -3,7 +3,6 @@
   "tags": ["-internal"],
   "ignoreDependencies": ["tailwindcss", "pngjs", "@types/pngjs"],
   "ignore": [
-    "server/src/providers/file/hooks/claude-hook.ts",
     "webview-ui/src/office/components/index.ts",
     "webview-ui/src/office/editor/index.ts",
     "webview-ui/src/office/engine/index.ts",
@@ -12,33 +11,16 @@
   ],
   "workspaces": {
     ".": {
-      "entry": [
-        "src/extension.ts",
-        "e2e/**/*.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "shared/**/*.ts",
-        "e2e/**/*.ts"
-      ]
+      "entry": ["shared/assets/loader.ts"],
+      "project": ["shared/**/*.ts"]
     },
-    "server": {
-      "entry": [
-        "src/server.ts",
-        "__tests__/**/*.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "__tests__/**/*.ts"
-      ]
+    "app": {
+      "entry": ["src/index.ts", "scripts/*.mjs"],
+      "project": ["src/**/*.ts", "scripts/**/*.mjs"]
     },
     "webview-ui": {
-      "entry": [
-        "test/**/*.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx}"
-      ]
+      "entry": ["src/main.tsx", "test/**/*.ts"],
+      "project": ["src/**/*.{ts,tsx}"]
     }
   }
 }
