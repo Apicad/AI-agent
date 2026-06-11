@@ -11,6 +11,20 @@ import { WebSocket } from 'ws';
 export const BUS_URL = process.env.PIXEL_AGENTS_WS || 'ws://localhost:4000';
 export const JSONL_ROOT = join(os.homedir(), '.claude', 'projects');
 
+/** The control bus accepts a localhost browser Origin or this Bearer token;
+ *  Node clients send no Origin, so read the token the backend wrote to server.json. */
+function busAuthHeaders() {
+  try {
+    const sj = JSON.parse(
+      readFileSync(join(os.homedir(), '.pixel-agents', 'server.json'), 'utf-8'),
+    );
+    if (sj?.token) return { Authorization: `Bearer ${sj.token}` };
+  } catch {
+    /* server.json missing → backend down; connect() reports the unreachable error */
+  }
+  return {};
+}
+
 // ── args ─────────────────────────────────────────────────────────────────────
 
 export function parseArgs(rawArgs) {
@@ -37,7 +51,7 @@ export function parseArgs(rawArgs) {
 
 export function connect(url = BUS_URL) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(url, { headers: busAuthHeaders() });
     const t = setTimeout(
       () =>
         reject(

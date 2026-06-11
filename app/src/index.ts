@@ -40,6 +40,9 @@ const ASSETS_DIR = path.join(PROJECT_ROOT, 'webview-ui', 'public', 'assets');
 const WEBVIEW_DIST = path.join(__dirname, '..', 'dist', 'webview');
 const APP_PORT = parseInt(process.env.PORT ?? '4000', 10);
 const HOOK_PORT = parseInt(process.env.HOOK_PORT ?? '4001', 10);
+// Shared secret for both the :4001 hook sink and the :4000 control-bus token path.
+// Written to ~/.pixel-agents/server.json (0600) so local Node tools can authenticate.
+const AUTH_TOKEN = crypto.randomUUID();
 /** Root of a claude-brain style vault (fleet/ + projects/) to observe. Optional. */
 const VAULT_ROOT = process.env.PIXEL_AGENTS_VAULT_ROOT ?? '';
 
@@ -279,7 +282,7 @@ function serveStatic(req: http.IncomingMessage, res: http.ServerResponse): void 
 
 // ── Hook HTTP server (port 4001) ────────────────────────────────────────────
 function startHookServer(): void {
-  const token = crypto.randomUUID();
+  const token = AUTH_TOKEN;
 
   const hookServer = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/api/health') {
@@ -337,6 +340,29 @@ function startHookServer(): void {
     // Write server.json so claude-hook.js can find us
     writeServerJson(HOOK_PORT, token);
   });
+}
+
+/** A WebSocket control-bus client is authorized if it either comes from a
+ *  localhost browser Origin (which remote pages cannot forge — this blocks
+ *  cross-site WebSocket hijacking) or presents the shared Bearer token (the
+ *  path Node CLI tools use, since they send no Origin). */
+function isLocalOrigin(origin: string | undefined): boolean {
+  if (!origin) return false;
+  try {
+    const host = new URL(origin).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function isAuthorizedWsClient(req: http.IncomingMessage): boolean {
+  if (isLocalOrigin(req.headers.origin)) return true;
+  const auth = req.headers['authorization'] ?? '';
+  const expected = `Bearer ${AUTH_TOKEN}`;
+  const a = Buffer.from(auth);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 function writeServerJson(port: number, token: string): void {
@@ -1584,8 +1610,20 @@ async function main(): Promise<void> {
     serveStatic(req, res);
   });
 
-  // Attach WebSocket server
-  const wss = new WebSocketServer({ server: httpServer });
+  // Attach WebSocket server — gate connections (the bus can spawn
+  // --dangerously-skip-permissions agents, so it must not accept any caller).
+  const wss = new WebSocketServer({
+    server: httpServer,
+    verifyClient: (info: { origin: string; secure: boolean; req: http.IncomingMessage }) => {
+      const ok = isAuthorizedWsClient(info.req);
+      if (!ok) {
+        console.warn(
+          `[Pixel Agents] Rejected WS connection (origin=${info.req.headers.origin ?? 'none'})`,
+        );
+      }
+      return ok;
+    },
+  });
 
   wss.on('connection', (ws) => {
     clients.add(ws);
@@ -1607,8 +1645,8 @@ async function main(): Promise<void> {
     });
   });
 
-  // Start main HTTP server
-  httpServer.listen(APP_PORT, () => {
+  // Start main HTTP server — bind localhost only (was all interfaces = LAN-reachable).
+  httpServer.listen(APP_PORT, '127.0.0.1', () => {
     console.log(`[Pixel Agents] App server listening on http://localhost:${APP_PORT}`);
   });
 
